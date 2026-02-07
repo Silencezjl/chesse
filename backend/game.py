@@ -110,8 +110,21 @@ class Room:
                 if self.thief_see_all_dice:
                     info["all_dice"] = {p_id: p.dice for p_id, p in self.players.items()}
                     info["message"] = "你是奶酪大盗！你已经偷走了奶酪🧀。你可以查看所有人的骰子点数。"
+                    info["same_group"] = []
                 else:
-                    info["message"] = "你是奶酪大盗！你已经偷走了奶酪🧀。"
+                    # Show same-group players to thief (like mice do)
+                    same_group_ids = [g for g in group if g != pid]
+                    if same_group_ids:
+                        group_members = []
+                        for gid in same_group_ids:
+                            gp = self.players[gid]
+                            group_members.append({"id": gid, "name": gp.name, "avatar": gp.avatar})
+                        info["same_group"] = group_members
+                        names = "、".join(self.players[gid].name for gid in same_group_ids)
+                        info["message"] = f"你是奶酪大盗！你已经偷走了奶酪🧀。你和 {names} 同时睁眼了。"
+                    else:
+                        info["same_group"] = []
+                        info["message"] = "你是奶酪大盗！你已经偷走了奶酪🧀。你独自睁眼。"
                 info["can_choose_accomplice"] = self.can_choose_accomplice()
                 info["can_peek"] = False
             else:
