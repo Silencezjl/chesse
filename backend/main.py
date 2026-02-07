@@ -83,6 +83,10 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
     # Room settings
     if "thief_see_all_dice" in data:
         room.thief_see_all_dice = bool(data["thief_see_all_dice"])
+    if "max_dice" in data:
+        val = int(data["max_dice"])
+        if 6 <= val <= 10:
+            room.max_dice = val
 
     await ws.send_json({
         "type": "room_created",

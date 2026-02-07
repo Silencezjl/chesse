@@ -26,6 +26,7 @@ export default function Lobby({ ws }) {
   const [showAllAvatars, setShowAllAvatars] = useState(false);
   const [showNamePicker, setShowNamePicker] = useState(false);
   const [thiefSeeAllDice, setThiefSeeAllDice] = useState(true);
+  const [maxDice, setMaxDice] = useState(6);
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
@@ -34,7 +35,7 @@ export default function Lobby({ ws }) {
   };
 
   const handleCreate = () => {
-    ws.send('create_room', { name, avatar, thief_see_all_dice: thiefSeeAllDice });
+    ws.send('create_room', { name, avatar, thief_see_all_dice: thiefSeeAllDice, max_dice: maxDice });
   };
 
   const handleJoinRoom = (roomId) => {
@@ -201,6 +202,36 @@ export default function Lobby({ ws }) {
                   }`} style={{ transform: thiefSeeAllDice ? 'translateX(18px)' : 'translateX(0)' }} />
                 </div>
               </div>
+
+              {/* Max Dice Setting */}
+              <div className="p-3 bg-white/5 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-cheese-400">🎲</span>
+                    <div>
+                      <div className="text-sm font-medium">骰子面数</div>
+                      <div className="text-xs text-white/40">
+                        醒来点数范围 1~{maxDice}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[6, 7, 8, 9, 10].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setMaxDice(v)}
+                        className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${
+                          maxDice === v
+                            ? 'bg-cheese-500 text-night-900'
+                            : 'bg-white/10 text-white/60 hover:bg-white/20'
+                        }`}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -230,12 +261,10 @@ export default function Lobby({ ws }) {
                     className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition"
                   >
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-cheese-400 font-bold">{room.room_id}</span>
-                        <span className="text-xs text-white/30">创建者: {room.creator_name}</span>
-                      </div>
+                      <div className="text-sm font-medium">{room.creator_name} 的房间</div>
                       <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5">
                         <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
+                        {room.max_dice !== 6 && <span>🎲 {room.max_dice}面</span>}
                         {!room.thief_see_all_dice && <span className="text-yellow-400/60">👁️ 大盗不可见点数</span>}
                       </div>
                     </div>

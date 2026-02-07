@@ -23,6 +23,7 @@ class Room:
         self.winner: Optional[str] = None  # "thief" or "mouse"
         self.accomplice_enabled: bool = True
         self.thief_see_all_dice: bool = True
+        self.max_dice: int = 6
         self.discussion_seconds: int = 180
         self._broadcast_func = None
         self.night_info: dict[str, dict] = {}
@@ -55,6 +56,7 @@ class Room:
             "phase": self.phase,
             "creator_name": self.players[self.creator_id].name if self.creator_id in self.players else "",
             "thief_see_all_dice": self.thief_see_all_dice,
+            "max_dice": self.max_dice,
         }
 
     def add_player(self, player: Player) -> bool:
@@ -96,7 +98,7 @@ class Room:
 
         # Roll dice for everyone
         for p in self.players.values():
-            p.dice = random.randint(1, 6)
+            p.dice = random.randint(1, self.max_dice)
 
         # Thief automatically steals cheese
         self.cheese_location = self.thief_id
@@ -482,6 +484,7 @@ class Room:
             "players": players_data,
             "creator_id": self.creator_id,
             "thief_see_all_dice": self.thief_see_all_dice,
+            "max_dice": self.max_dice,
         }
 
         # Include personalized game info for all active game phases (Bug3: survives refresh)
