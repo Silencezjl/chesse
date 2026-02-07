@@ -1,5 +1,6 @@
 import random
 import asyncio
+import time
 from typing import Optional
 from models import Player, Role, GamePhase, generate_room_id
 
@@ -26,6 +27,35 @@ class Room:
         self._broadcast_func = None
         self.night_info: dict[str, dict] = {}
         self.vote_requests: set[str] = set()
+        self.all_disconnected_since: Optional[float] = None  # timestamp when all players disconnected
+
+    def update_disconnect_timer(self):
+        """Update the all-disconnected timer."""
+        any_connected = any(p.connected for p in self.players.values())
+        if not any_connected and self.players:
+            if self.all_disconnected_since is None:
+                self.all_disconnected_since = time.time()
+        else:
+            self.all_disconnected_since = None
+
+    def is_stale(self, timeout: float = 900) -> bool:
+        """Check if room should be dissolved (all disconnected for timeout seconds)."""
+        if self.all_disconnected_since is None:
+            return False
+        return (time.time() - self.all_disconnected_since) >= timeout
+
+    def to_list_item(self) -> dict:
+        """Return a summary dict for room listing."""
+        connected_count = sum(1 for p in self.players.values() if p.connected)
+        return {
+            "room_id": self.id,
+            "player_count": len(self.players),
+            "connected_count": connected_count,
+            "max_players": self.max_players,
+            "phase": self.phase,
+            "creator_name": self.players[self.creator_id].name if self.creator_id in self.players else "",
+            "thief_see_all_dice": self.thief_see_all_dice,
+        }
 
     def add_player(self, player: Player) -> bool:
         if len(self.players) >= self.max_players:
@@ -517,3 +547,18 @@ class GameManager:
             if player_id in room.players:
                 return room
         return None
+
+    def list_rooms(self) -> list[dict]:
+        """Return list of joinable rooms (waiting phase, not full)."""
+        result = []
+        for room in self.rooms.values():
+            if room.phase == GamePhase.WAITING and len(room.players) < room.max_players:
+                result.append(room.to_list_item())
+        return result
+
+    def cleanup_stale_rooms(self) -> list[str]:
+        """Remove rooms where all players have been disconnected for 15+ minutes."""
+        stale_ids = [rid for rid, room in self.rooms.items() if room.is_stale()]
+        for rid in stale_ids:
+            del self.rooms[rid]
+        return stale_ids

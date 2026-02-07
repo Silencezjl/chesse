@@ -29,6 +29,23 @@ connections: dict[str, WebSocket] = {}
 player_rooms: dict[str, str] = {}
 
 
+async def cleanup_stale_rooms_task():
+    """Background task to clean up rooms where all players disconnected for 15+ minutes."""
+    while True:
+        await asyncio.sleep(60)  # check every minute
+        stale_ids = game_manager.cleanup_stale_rooms()
+        for rid in stale_ids:
+            # Clean up player_rooms references
+            to_remove = [pid for pid, r_id in player_rooms.items() if r_id == rid]
+            for pid in to_remove:
+                player_rooms.pop(pid, None)
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(cleanup_stale_rooms_task())
+
+
 async def send_to_player(player_id: str, message: dict):
     ws = connections.get(player_id)
     if ws:
@@ -319,6 +336,12 @@ async def handle_get_game_info(ws: WebSocket, player_id: str, data: dict):
     await ws.send_json({"type": "room_state", "data": state})
 
 
+async def handle_list_rooms(ws: WebSocket, player_id: str, data: dict):
+    """Return list of joinable rooms."""
+    rooms = game_manager.list_rooms()
+    await ws.send_json({"type": "room_list", "data": {"rooms": rooms}})
+
+
 MESSAGE_HANDLERS = {
     "create_room": handle_create_room,
     "join_room": handle_join_room,
@@ -331,6 +354,7 @@ MESSAGE_HANDLERS = {
     "new_game": handle_new_game,
     "leave_room": handle_leave_room,
     "get_game_info": handle_get_game_info,
+    "list_rooms": handle_list_rooms,
 }
 
 
@@ -345,6 +369,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         room = game_manager.get_room(room_id)
         if room and player_id in room.players:
             room.players[player_id].connected = True
+            room.update_disconnect_timer()
             await send_room_state(room)
             await broadcast_to_room(room, {
                 "type": "player_reconnected",
@@ -392,6 +417,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         room = game_manager.find_player_room(player_id)
         if room and player_id in room.players:
             room.players[player_id].connected = False
+            room.update_disconnect_timer()
             await broadcast_to_room(room, {
                 "type": "player_disconnected",
                 "data": {"player_id": player_id, "name": room.players[player_id].name}

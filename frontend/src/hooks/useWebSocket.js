@@ -18,6 +18,7 @@ export default function useWebSocket() {
   const [gameInfo, setGameInfo] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [screenShake, setScreenShake] = useState(false);
+  const [roomList, setRoomList] = useState([]);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
   const heartbeatTimer = useRef(null);
@@ -83,6 +84,9 @@ export default function useWebSocket() {
           if (msg.data.my_info) {
             setGameInfo(prev => prev ? { ...prev, ...msg.data.my_info } : msg.data.my_info);
           }
+          break;
+        case 'room_list':
+          setRoomList(msg.data.rooms || []);
           break;
         case 'room_created':
           addNotification(`房间创建成功！房间号：${msg.data.room_id}`, 'success');
@@ -200,6 +204,7 @@ export default function useWebSocket() {
     connected,
     playerId,
     roomState,
+    roomList,
     gameInfo,
     notifications,
     screenShake,

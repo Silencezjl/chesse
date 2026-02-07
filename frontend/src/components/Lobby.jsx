@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, LogIn, Shuffle, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, LogIn, Shuffle, ChevronRight, Eye, EyeOff, RefreshCw, Users } from 'lucide-react';
 
 const AVATARS = [
   "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
@@ -21,12 +21,12 @@ const NAMES = [
 
 export default function Lobby({ ws }) {
   const [mode, setMode] = useState(null); // null | 'create' | 'join'
-  const [roomId, setRoomId] = useState('');
   const [name, setName] = useState(() => NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 99));
   const [avatar, setAvatar] = useState(() => AVATARS[Math.floor(Math.random() * AVATARS.length)]);
   const [showAllAvatars, setShowAllAvatars] = useState(false);
   const [showNamePicker, setShowNamePicker] = useState(false);
   const [thiefSeeAllDice, setThiefSeeAllDice] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
     setName(NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 99));
@@ -37,10 +37,22 @@ export default function Lobby({ ws }) {
     ws.send('create_room', { name, avatar, thief_see_all_dice: thiefSeeAllDice });
   };
 
-  const handleJoin = () => {
-    if (!roomId.trim()) return;
-    ws.send('join_room', { room_id: roomId.trim(), name, avatar });
+  const handleJoinRoom = (roomId) => {
+    ws.send('join_room', { room_id: roomId, name, avatar });
   };
+
+  const refreshRoomList = () => {
+    setRefreshing(true);
+    ws.send('list_rooms', {});
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
+  // Fetch room list when entering join mode
+  useEffect(() => {
+    if (mode === 'join') {
+      ws.send('list_rooms', {});
+    }
+  }, [mode, ws]);
 
   if (!mode) {
     return (
@@ -195,26 +207,60 @@ export default function Lobby({ ws }) {
 
         {mode === 'join' && (
           <div className="mb-6">
-            <label className="text-sm text-white/60 mb-2 block">房间号</label>
-            <input
-              type="text"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              className="input-field text-center text-2xl tracking-widest"
-              placeholder="输入6位房间号"
-              maxLength={6}
-            />
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm text-white/60">在线房间</label>
+              <button
+                onClick={refreshRoomList}
+                className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1"
+              >
+                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> 刷新
+              </button>
+            </div>
+            {ws.roomList.length === 0 ? (
+              <div className="text-center py-8 text-white/30">
+                <Users size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">暂无可加入的房间</p>
+                <p className="text-xs mt-1">试试创建一个新房间吧！</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {ws.roomList.map((room) => (
+                  <div
+                    key={room.room_id}
+                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-cheese-400 font-bold">{room.room_id}</span>
+                        <span className="text-xs text-white/30">创建者: {room.creator_name}</span>
+                      </div>
+                      <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5">
+                        <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
+                        {!room.thief_see_all_dice && <span className="text-yellow-400/60">👁️ 大盗不可见点数</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleJoinRoom(room.room_id)}
+                      className="text-xs px-3 py-1.5 bg-cheese-500/80 hover:bg-cheese-500 text-white rounded-lg transition flex items-center gap-1"
+                    >
+                      <LogIn size={12} /> 加入
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <button
-          onClick={mode === 'create' ? handleCreate : handleJoin}
-          className="btn-primary w-full flex items-center justify-center gap-2"
-          disabled={mode === 'join' && !roomId.trim()}
-        >
-          {mode === 'create' ? '创建并进入' : '加入房间'}
-          <ChevronRight size={18} />
-        </button>
+        {mode === 'create' && (
+          <button
+            onClick={handleCreate}
+            className="btn-primary w-full flex items-center justify-center gap-2"
+          >
+            创建并进入
+            <ChevronRight size={18} />
+          </button>
+        )}
       </div>
     </div>
   );
