@@ -351,6 +351,15 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 "data": {"player_id": player_id, "name": room.players[player_id].name}
             }, exclude=player_id)
 
+            # After reconnection, check if all votes are now in
+            if room.phase == GamePhase.VOTING and room.all_voted():
+                result = room.tally_votes()
+                await broadcast_to_room(room, {
+                    "type": "game_result",
+                    "data": result
+                })
+                await send_room_state(room)
+
     # Tell client their player_id and whether they have an active room
     connected_data = {"player_id": player_id}
     if room_id:

@@ -122,6 +122,7 @@ export default function useWebSocket() {
           addNotification(msg.data.message, 'info');
           break;
         case 'vote_start':
+          setNotifications([]); // Clear old vote_requested notifications
           addNotification(msg.data.message, 'warning');
           break;
         case 'game_result':

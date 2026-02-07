@@ -303,6 +303,9 @@ class Room:
         voter = self.players.get(voter_id)
         if not voter or target_id not in self.players:
             return False, "无效的投票目标"
+        # Cannot change vote once cast
+        if voter.voted_for is not None:
+            return False, "你已经投过票了，不能改票"
         # Accomplice cannot vote for thief
         if voter.is_accomplice and target_id == self.thief_id:
             return False, "作为共犯，你不能给奶酪大盗投票"
@@ -311,7 +314,7 @@ class Room:
 
     def all_voted(self) -> bool:
         for p in self.players.values():
-            if p.connected and p.voted_for is None:
+            if p.voted_for is None:
                 return False
         return True
 
@@ -452,7 +455,13 @@ class Room:
                     night = self.night_info.get(for_player_id, {})
                     my_info.update(night)
                     my_info["can_end_night"] = self.can_end_night(for_player_id)
+                    my_info["i_night_done"] = for_player_id in self.night_actions_done
                 data["my_info"] = my_info
+
+        if self.phase == GamePhase.NIGHT:
+            connected_count = sum(1 for p in self.players.values() if p.connected)
+            data["night_done_count"] = len(self.night_actions_done)
+            data["night_total"] = connected_count
 
         if self.phase == GamePhase.DAY:
             data["vote_request_count"] = self.vote_request_count()

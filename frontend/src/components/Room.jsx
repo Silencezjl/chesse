@@ -80,17 +80,23 @@ function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccompli
       )}
 
       {/* Voting: Vote button */}
-      {phase === 'voting' && !isMe && onVote && player.id !== noVoteTarget && (
-        <button
-          onClick={() => onVote(player.id)}
-          className={`text-xs py-1 px-3 rounded-lg transition flex items-center gap-1 ${
-            myVote === player.id
-              ? 'bg-red-500 text-white'
-              : 'bg-white/10 hover:bg-white/20 text-white'
-          }`}
-        >
-          <Vote size={12} /> {myVote === player.id ? '已投票' : '投票'}
-        </button>
+      {phase === 'voting' && !isMe && player.id !== noVoteTarget && (
+        myVote ? (
+          myVote === player.id ? (
+            <span className="text-xs py-1 px-3 rounded-lg bg-red-500 text-white flex items-center gap-1">
+              <Vote size={12} /> 已投票
+            </span>
+          ) : null
+        ) : (
+          onVote && (
+            <button
+              onClick={() => onVote(player.id)}
+              className="text-xs py-1 px-3 rounded-lg transition flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white"
+            >
+              <Vote size={12} /> 投票
+            </button>
+          )
+        )
       )}
       {phase === 'voting' && !isMe && player.id === noVoteTarget && (
         <span className="text-xs text-white/30 py-1">不可投票</span>
@@ -109,12 +115,6 @@ function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccompli
 export default function Room({ ws }) {
   const { roomState, playerId, gameInfo, screenShake, send } = ws;
   const [copied, setCopied] = useState(false);
-  const [nightDone, setNightDone] = useState(false);
-
-  // Reset nightDone when phase changes
-  useEffect(() => {
-    if (roomState?.phase !== 'night') setNightDone(false);
-  }, [roomState?.phase]);
 
   if (!roomState) return null;
 
@@ -142,7 +142,6 @@ export default function Room({ ws }) {
 
   const handleNightDone = () => {
     send('night_done', {});
-    setNightDone(true);
   };
 
   const handleRequestVote = () => {
@@ -410,7 +409,10 @@ export default function Room({ ws }) {
 
         {phase === 'night' && (() => {
           const canEnd = gameInfo?.can_end_night;
-          const btnDisabled = nightDone || !canEnd;
+          const iDone = gameInfo?.i_night_done;
+          const btnDisabled = iDone || !canEnd;
+          const doneCount = roomState.night_done_count || 0;
+          const totalCount = roomState.night_total || 0;
           let hint = '';
           if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
           else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
@@ -424,9 +426,12 @@ export default function Room({ ws }) {
                 className={btnDisabled ? 'btn-secondary opacity-60 cursor-not-allowed' : 'btn-primary'}
               >
                 <span className="flex items-center gap-2">
-                  <Check size={16} /> {nightDone ? '已结束，等待其他人...' : '结束夜晚行动'}
+                  <Check size={16} /> {iDone ? '已结束，等待其他人...' : '结束夜晚行动'}
                 </span>
               </button>
+              <span className="text-xs text-white/40">
+                已结束: {doneCount}/{totalCount}
+              </span>
             </>
           );
         })()}
