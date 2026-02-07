@@ -133,7 +133,7 @@ export default function useWebSocket() {
           setGameInfo(prev => ({ ...prev, result: msg.data }));
           break;
         case 'vote_requested':
-          addNotification(`${msg.data.name} 发起了投票 (${msg.data.request_count}/${msg.data.required})`, 'info');
+          // No global notification, progress shown inline in day phase UI
           break;
         case 'new_game':
           setGameInfo(null);

@@ -215,27 +215,39 @@ class Room:
             return False
         return True
 
+    def all_actions_complete(self) -> bool:
+        """Check if all players who have night actions have completed them."""
+        # Thief must have chosen accomplice
+        if self.must_choose_accomplice() and self.accomplice_id is None:
+            return False
+        # All mice that can peek must have peeked
+        for pid, night in self.night_info.items():
+            if night.get("can_peek") and not night.get("has_peeked"):
+                return False
+        return True
+
     def can_end_night(self, player_id: str) -> bool:
         """Check if a player can click 'end night'.
         Conditions:
         1. Player's own action is complete (mouse peeked if can_peek; thief chose accomplice)
-        2. Thief has chosen accomplice (global wait condition)
+        2. All players' actions must be complete (global wait condition)
         """
         player = self.players.get(player_id)
         if not player:
             return False
 
-        # Global: thief must have chosen accomplice
-        if self.must_choose_accomplice() and self.accomplice_id is None:
-            return False
-
-        # Per-player: own action must be done
+        # Per-player: own action must be done first
         if player.role == Role.THIEF:
-            return True  # accomplice already checked above
+            if self.must_choose_accomplice() and self.accomplice_id is None:
+                return False
+        else:
+            night = self.night_info.get(player_id, {})
+            if night.get("can_peek") and not night.get("has_peeked"):
+                return False
 
-        night = self.night_info.get(player_id, {})
-        if night.get("can_peek") and not night.get("has_peeked"):
-            return False  # mouse can peek but hasn't yet
+        # Global: all players' actions must be complete
+        if not self.all_actions_complete():
+            return False
 
         return True
 

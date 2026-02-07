@@ -416,7 +416,7 @@ export default function Room({ ws }) {
           let hint = '';
           if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
           else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
-          else if (!canEnd) hint = '⏳ 等待大盗选择共犯...';
+          else if (!canEnd) hint = '⏳ 等待所有玩家完成夜晚操作...';
           return (
             <>
               {hint && <span className="text-sm text-yellow-400">{hint}</span>}

@@ -81,18 +81,18 @@ body {
 }
 
 .btn-primary {
-  @apply px-6 py-3 bg-gradient-to-r from-cheese-400 to-cheese-500 text-night-900 font-bold rounded-xl 
+  @apply inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-cheese-400 to-cheese-500 text-night-900 font-bold rounded-xl 
          hover:from-cheese-300 hover:to-cheese-400 transition-all duration-200 
          active:scale-95 shadow-lg shadow-cheese-500/25;
 }
 
 .btn-secondary {
-  @apply px-6 py-3 bg-white/10 text-white font-medium rounded-xl border border-white/20
+  @apply inline-flex items-center justify-center px-6 py-3 bg-white/10 text-white font-medium rounded-xl border border-white/20
          hover:bg-white/20 transition-all duration-200 active:scale-95;
 }
 
 .btn-danger {
-  @apply px-6 py-3 bg-red-500/80 text-white font-bold rounded-xl
+  @apply inline-flex items-center justify-center px-6 py-3 bg-red-500/80 text-white font-bold rounded-xl
          hover:bg-red-500 transition-all duration-200 active:scale-95;
 }
 
