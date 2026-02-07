@@ -190,7 +190,7 @@ export default function Lobby({ ws }) {
                   <div>
                     <div className="text-sm font-medium">大盗可见所有点数</div>
                     <div className="text-xs text-white/40">
-                      {thiefSeeAllDice ? '大盗能看到所有老鼠的骰子点数' : '大盗无法看到其他人的骰子点数'}
+                      {thiefSeeAllDice ? '大盗能看到所有骰子点数' : '大盗无法看到其他人的骰子点数'}
                     </div>
                   </div>
                 </div>
@@ -265,7 +265,7 @@ export default function Lobby({ ws }) {
                       <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5">
                         <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
                         <span>🎲 {room.max_dice}面</span>
-                        <span>{room.thief_see_all_dice ? '👁 大盗可见点数' : '� 大盗不可见点数'}</span>
+                        <span>{room.thief_see_all_dice ? '👁 大盗可见点数' : '🙈 大盗不可见点数'}</span>
                       </div>
                     </div>
                     <button
