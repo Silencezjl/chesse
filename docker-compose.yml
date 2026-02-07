@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  cheese-thief:
+    build: .
+    container_name: cheese-thief
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    working_dir: /app/backend
