@@ -20,6 +20,8 @@ export default function useWebSocket() {
   const [screenShake, setScreenShake] = useState(false);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
+  const heartbeatTimer = useRef(null);
+  const reconnectAttempts = useRef(0);
 
   const addNotification = useCallback((text, type = 'info') => {
     const id = Date.now();
@@ -29,18 +31,40 @@ export default function useWebSocket() {
     }, 4000);
   }, []);
 
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatTimer.current) {
+      clearInterval(heartbeatTimer.current);
+      heartbeatTimer.current = null;
+    }
+  }, []);
+
+  const startHeartbeat = useCallback(() => {
+    stopHeartbeat();
+    heartbeatTimer.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping', data: {} }));
+      }
+    }, 25000); // every 25s
+  }, [stopHeartbeat]);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    // Clean up any existing connecting socket
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+      wsRef.current.close();
+    }
 
     const ws = new WebSocket(`${WS_URL}/${playerId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setConnected(true);
+      reconnectAttempts.current = 0;
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
       }
+      startHeartbeat();
     };
 
     ws.onmessage = (event) => {
@@ -124,21 +148,44 @@ export default function useWebSocket() {
 
     ws.onclose = () => {
       setConnected(false);
+      stopHeartbeat();
+      // Exponential backoff: 1s, 2s, 4s, 8s, max 15s
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 15000);
+      reconnectAttempts.current += 1;
       reconnectTimer.current = setTimeout(() => {
         connect();
-      }, 2000);
+      }, delay);
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, [playerId, addNotification]);
+  }, [playerId, addNotification, startHeartbeat, stopHeartbeat]);
 
   useEffect(() => {
     connect();
+
+    // Reconnect immediately when page becomes visible (e.g. phone unlock)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          // Clear any pending reconnect and connect now
+          if (reconnectTimer.current) {
+            clearTimeout(reconnectTimer.current);
+            reconnectTimer.current = null;
+          }
+          reconnectAttempts.current = 0;
+          connect();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, [connect]);
 

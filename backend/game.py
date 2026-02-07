@@ -142,6 +142,8 @@ class Room:
                     if thief_dice < player.dice:
                         info["cheese_stolen"] = True
                         info["message"] += "\n⚠️ 你发现奶酪已经被偷走了！"
+                    else:
+                        info["message"] += "\n✅ 奶酪还在，没有被偷走。"
                 else:
                     # Multiple players share dice value: open eyes together
                     info["can_peek"] = False
@@ -166,6 +168,8 @@ class Room:
                         if thief_dice < player.dice:
                             info["cheese_stolen"] = True
                             info["message"] += "\n⚠️ 你们发现奶酪已经被偷走了！"
+                        else:
+                            info["message"] += "\n✅ 奶酪还在，没有被偷走。"
 
             self.night_info[pid] = info
 

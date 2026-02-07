@@ -368,6 +368,10 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             msg_type = msg.get("type")
             msg_data = msg.get("data", {})
 
+            if msg_type == "ping":
+                await websocket.send_json({"type": "pong", "data": {}})
+                continue
+
             handler = MESSAGE_HANDLERS.get(msg_type)
             if handler:
                 await handler(websocket, player_id, msg_data)
