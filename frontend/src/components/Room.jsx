@@ -179,9 +179,13 @@ export default function Room({ ws }) {
                 {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} className="text-white/50" />}
               </button>
             </div>
-            <div className="text-xs text-white/40 flex items-center gap-1">
+            <div className="text-xs text-white/40 flex items-center gap-1 flex-wrap">
               <Users size={12} />
               {player_count}/{max_players} 玩家 · 最少{min_players}人开始
+              <span className="mx-1">·</span>
+              🎲 {roomState.max_dice || 6}面
+              <span className="mx-1">·</span>
+              {roomState.thief_see_all_dice ? '👁 大盗可见点数' : '🙈 大盗不可见点数'}
             </div>
           </div>
         </div>

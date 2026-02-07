@@ -264,8 +264,8 @@ export default function Lobby({ ws }) {
                       <div className="text-sm font-medium">{room.creator_name} 的房间</div>
                       <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5">
                         <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
-                        {room.max_dice !== 6 && <span>🎲 {room.max_dice}面</span>}
-                        {!room.thief_see_all_dice && <span className="text-yellow-400/60">👁️ 大盗不可见点数</span>}
+                        <span>🎲 {room.max_dice}面</span>
+                        <span>{room.thief_see_all_dice ? '👁 大盗可见点数' : '� 大盗不可见点数'}</span>
                       </div>
                     </div>
                     <button
