@@ -37,6 +37,7 @@ class Room:
         self.outsider_type: Optional[str] = None  # which outsider is active this game
         self.outsider_id: Optional[str] = None    # player id of the outsider
         self.poison_target_id: Optional[str] = None  # 料理鼠王's poison target
+        self.poison_fake_dice: Optional[int] = None    # fake dice value for poisoned player
         self.swap_info: Optional[dict] = None     # 鼠小弟 swap info {pid1, pid2, dice1_orig, dice2_orig}
         self.drunk_accomplice_id: Optional[str] = None  # who drunk mouse chose as accomplice
         self.thief_raw_accomplice_id: Optional[str] = None  # who thief initially chose (before resolution)
@@ -137,6 +138,7 @@ class Room:
         self.outsider_type = None
         self.outsider_id = None
         self.poison_target_id = None
+        self.poison_fake_dice = None
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
@@ -191,6 +193,12 @@ class Room:
             # Poison a random other player
             others = [pid for pid in self.players if pid != self.outsider_id]
             self.poison_target_id = random.choice(others)
+            # Generate a fake dice value different from the target's real dice
+            target_player = self.players[self.poison_target_id]
+            possible_dice = [d for d in range(1, self.max_dice + 1) if d != target_player.dice]
+            self.poison_fake_dice = random.choice(possible_dice)
+            # Set display_dice so the poisoned player sees the fake value
+            target_player.display_dice = self.poison_fake_dice
 
         elif outsider_type == "trickster":
             # Can be any player (thief or mouse)
@@ -224,19 +232,24 @@ class Room:
         """Compute night phase info for each player based on dice groups."""
         # Drunk mouse is excluded from dice wake order (sleeps all night)
         drunk_id = self.outsider_id if self.outsider_type == "drunk" else None
+        # Poisoned player (if any) - excluded from normal grouping, computed separately
+        # This works for both mice AND the thief: they wake at fake dice time
+        poison_pid = self.poison_target_id if self.outsider_type == "ratatouille" else None
 
-        # Group players by actual dice value (excluding drunk mouse)
+        # Group players by actual dice value (excluding drunk mouse and poisoned player)
         dice_groups: dict[int, list[str]] = {}
         for pid, player in self.players.items():
             if pid == drunk_id:
                 continue  # drunk mouse doesn't wake up
+            if pid == poison_pid:
+                continue  # poisoned player grouped separately by fake dice
             dice_groups.setdefault(player.dice, []).append(pid)
 
         thief_dice = self.players[self.thief_id].dice
 
-        # Compute normal night info for all non-drunk players
+        # Compute normal night info for non-drunk, non-poisoned players
         for pid, player in self.players.items():
-            if pid == drunk_id:
+            if pid == drunk_id or pid == poison_pid:
                 continue  # handled separately below
 
             group = dice_groups.get(player.dice, [])
@@ -255,7 +268,7 @@ class Room:
             if player.outsider == "ratatouille":
                 poison_target = self.players[self.poison_target_id]
                 info["outsider"] = "ratatouille"
-                info["outsider_info"] = f"🍳 你是料理鼠王！你在开局投毒了 {poison_target.name}，TA今晚会得到错误信息。"
+                info["outsider_info"] = f"🍳 你是料理鼠王！你用黑暗料理迷惑了 {poison_target.name}"
                 info["poison_target_id"] = self.poison_target_id
                 info["poison_target_name"] = poison_target.name
             elif player.outsider == "trickster":
@@ -263,15 +276,15 @@ class Room:
                 p1_name = self.players[swap["pid1"]].name
                 p2_name = self.players[swap["pid2"]].name
                 info["outsider"] = "trickster"
-                info["outsider_info"] = f"🧸 你是鼠小弟！你在开局调换了 {p1_name}（{swap['dice1_orig']}点）和 {p2_name}（{swap['dice2_orig']}点）的骰子。"
+                info["outsider_info"] = f"\ud83e\uddf8 \u4f60\u662f\u9f20\u5c0f\u5f1f\uff01\u4f60\u5728\u5f00\u5c40\u8c03\u6362\u4e86 {p1_name}\uff08{swap['dice1_orig']}\u70b9\uff09\u548c {p2_name}\uff08{swap['dice2_orig']}\u70b9\uff09\u7684\u9ab0\u5b50\u3002"
                 info["can_peek"] = False  # trickster can never peek
                 info["swap_info"] = swap
 
             self.night_info[pid] = info
 
-        # Apply poison effect: overwrite poisoned player's info with fake data
-        if self.outsider_type == "ratatouille" and self.poison_target_id:
-            self._apply_poison_effect()
+        # Apply poison effect: compute poisoned player's info based on fake dice
+        if poison_pid:
+            self._apply_poison_effect(dice_groups)
 
         # Handle drunk mouse: give them fake thief info
         if drunk_id:
@@ -299,8 +312,13 @@ class Room:
         info["can_choose_accomplice"] = self.can_choose_accomplice()
         info["can_peek"] = False
 
-    def _compute_mouse_night_info(self, pid: str, player, group: list, thief_dice: int, info: dict):
-        """Compute night info for a regular mouse (not drunk)."""
+    def _compute_mouse_night_info(self, pid: str, player, group: list, thief_dice: int, info: dict, perceived_dice: int = None):
+        """Compute night info for a regular mouse (not drunk).
+        perceived_dice: the dice value the player believes they have (for cheese_stolen check).
+        Defaults to player.dice if not specified.
+        """
+        if perceived_dice is None:
+            perceived_dice = player.dice
         same_group_ids = [g for g in group if g != pid]
         is_alone = len(same_group_ids) == 0
         thief_in_group = self.thief_id in group
@@ -317,7 +335,7 @@ class Room:
                 info["can_peek"] = True
                 info["same_group"] = []
                 info["message"] = "你是瞌睡鼠，你独自睁眼。你可以偷看一位玩家的骰子点数。"
-            if thief_dice < player.dice:
+            if thief_dice < perceived_dice:
                 info["cheese_stolen"] = True
                 info["message"] += "\n⚠️ 你发现奶酪已经被偷走了！"
             else:
@@ -341,72 +359,55 @@ class Room:
             else:
                 names = "、".join(self.players[gid].name for gid in same_group_ids)
                 info["message"] = f"你是瞌睡鼠。你和 {names} 同时睁眼了，你们互相确认都是好老鼠🐭。"
-                if thief_dice < player.dice:
+                if thief_dice < perceived_dice:
                     info["cheese_stolen"] = True
                     info["message"] += "\n⚠️ 你们发现奶酪已经被偷走了！"
                 else:
                     info["message"] += "\n✅ 奶酪还在，没有被偷走。"
 
-    def _apply_poison_effect(self):
-        """Overwrite poisoned player's night info with randomized fake data."""
+    def _apply_poison_effect(self, dice_groups: dict):
+        """Compute poisoned player's night info based on their fake dice value.
+
+        The poisoned player thinks they have poison_fake_dice, so they
+        join the real group of players who actually have that dice value
+        and experience the night as if they were in that group.
+        Works for both mice and the thief.
+        """
         pid = self.poison_target_id
-        if pid not in self.night_info:
-            return
         player = self.players[pid]
-        if player.role == Role.THIEF:
-            return  # don't poison the thief's info (would be too disruptive)
+        fake_dice = self.poison_fake_dice
+        thief_dice = self.players[self.thief_id].dice
 
-        real_info = self.night_info[pid]
-        # Generate completely random fake info
-        other_pids = [p for p in self.players if p != pid]
-
-        # Randomly decide: show them as alone or in a fake group
-        fake_alone = random.choice([True, False])
-        fake_cheese_stolen = random.choice([True, False])
+        # The poisoned player "joins" the group that has the fake dice value
+        # They see those real players as groupmates
+        fake_group = dice_groups.get(fake_dice, [])
+        # Build a virtual group that includes the poisoned player
+        virtual_group = fake_group + [pid]
 
         info = {
             "role": player.role,
-            "dice": player.display_dice,
+            "dice": player.display_dice,  # shows the fake dice (set in _assign_outsider)
             "phase": "night",
-            "is_poisoned": True,  # hidden flag, not sent to player
+            "is_poisoned": True,  # hidden flag, stripped before sending to player
         }
 
-        if fake_alone:
-            info["can_peek"] = True
-            info["same_group"] = []
-            info["message"] = "你是瞌睡鼠，你独自睁眼。你可以偷看一位玩家的骰子点数。"
-            if fake_cheese_stolen:
-                info["cheese_stolen"] = True
-                info["message"] += "\n⚠️ 你发现奶酪已经被偷走了！"
-            else:
-                info["message"] += "\n✅ 奶酪还在，没有被偷走。"
+        if player.role == Role.THIEF:
+            # Thief is poisoned: they still steal cheese, but wake at wrong time
+            # They see whoever is in the fake dice group
+            self._compute_thief_night_info(pid, player, virtual_group, info)
         else:
-            info["can_peek"] = False
-            # Pick 1-2 random other players as fake group members
-            fake_count = random.randint(1, min(2, len(other_pids)))
-            fake_members = random.sample(other_pids, fake_count)
-            group_members = []
-            for gid in fake_members:
-                gp = self.players[gid]
-                group_members.append({"id": gid, "name": gp.name, "avatar": gp.avatar})
-            info["same_group"] = group_members
-            names = "、".join(self.players[gid].name for gid in fake_members)
-            info["message"] = f"你是瞌睡鼠。你和 {names} 同时睁眼了，你们互相确认都是好老鼠🐭。"
-            if fake_cheese_stolen:
-                info["cheese_stolen"] = True
-                info["message"] += "\n⚠️ 你们发现奶酪已经被偷走了！"
-            else:
-                info["message"] += "\n✅ 奶酪还在，没有被偷走。"
+            # Mouse is poisoned: normal mouse logic with fake group
+            self._compute_mouse_night_info(pid, player, virtual_group, thief_dice, info, perceived_dice=fake_dice)
 
-        # Preserve outsider info if the poisoned player is also an outsider
-        if real_info.get("outsider"):
-            info["outsider"] = real_info["outsider"]
-            info["outsider_info"] = real_info.get("outsider_info")
-            if real_info.get("swap_info"):
-                info["swap_info"] = real_info["swap_info"]
-            if real_info.get("poison_target_id"):
-                info["poison_target_id"] = real_info["poison_target_id"]
-                info["poison_target_name"] = real_info["poison_target_name"]
+        # If poisoned player is also an outsider, preserve their outsider info
+        if player.outsider == "trickster":
+            swap = self.swap_info
+            p1_name = self.players[swap["pid1"]].name
+            p2_name = self.players[swap["pid2"]].name
+            info["outsider"] = "trickster"
+            info["outsider_info"] = f"🧸 你是鼠小弟！你在开局调换了 {p1_name}（{swap['dice1_orig']}点）和 {p2_name}（{swap['dice2_orig']}点）的骰子。"
+            info["can_peek"] = False  # trickster can never peek
+            info["swap_info"] = swap
 
         self.night_info[pid] = info
 
@@ -627,14 +628,10 @@ class Room:
             return None
 
         target = self.players[target_id]
-        # If player is poisoned, show a random wrong dice value
-        is_poisoned = night.get("is_poisoned", False)
-        if is_poisoned:
-            # Generate a random dice value different from the real one
-            fake_dice = random.choice([d for d in range(1, self.max_dice + 1) if d != target.display_dice])
-            peek_result = fake_dice
-        else:
-            peek_result = target.display_dice  # show display_dice (may differ from actual if swapped)
+        # Always show target's display_dice (what the target thinks their dice is)
+        # Poisoned players now get real peek results - their deception comes from
+        # waking up at the wrong time (fake dice group), not from fake peek values.
+        peek_result = target.display_dice
 
         player.has_peeked = True
         player.peek_target = target_id
@@ -780,16 +777,16 @@ class Room:
                 # Outsider-specific action log entries
                 if player.outsider == "ratatouille":
                     poison_target = self.players.get(self.poison_target_id)
-                    if poison_target:
-                        entry["actions"].append(f"🍳 投毒了 {poison_target.name}，导致TA获得错误信息")
+                    if poison_target and self.poison_fake_dice:
+                        entry["actions"].append(f"🍳 黑暗料理迷惑了 {poison_target.name}，TA以为自己是{self.poison_fake_dice}点醒来（实际{poison_target.dice}点）")
                 elif player.outsider == "trickster" and self.swap_info:
                     p1_name = self.players[self.swap_info['pid1']].name
                     p2_name = self.players[self.swap_info['pid2']].name
                     entry["actions"].append(f"🧸 调换了 {p1_name} 和 {p2_name} 的骰子")
 
                 # Poison victim tag
-                if pid == self.poison_target_id and self.outsider_type == "ratatouille":
-                    entry["actions"].append("☠️ 被料理鼠王投毒，获得了错误的夜晚信息")
+                if pid == self.poison_target_id and self.outsider_type == "ratatouille" and self.poison_fake_dice:
+                    entry["actions"].append(f"☠️ 被料理鼠王的黑暗料理迷惑，以为自己是{self.poison_fake_dice}点醒来（实际{player.dice}点）")
 
                 # Swap victim tag
                 if self.swap_info and pid in (self.swap_info['pid1'], self.swap_info['pid2']):
@@ -872,6 +869,7 @@ class Room:
         self.outsider_type = None
         self.outsider_id = None
         self.poison_target_id = None
+        self.poison_fake_dice = None
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None

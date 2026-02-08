@@ -124,7 +124,7 @@ export default function Lobby({ ws }) {
               <p className="font-medium text-white/70 mb-2">🌟 外来者角色（可选）</p>
               <p className="mb-2">开启后每局随机出现一个外来者，增加游戏随机性和趣味性。（酒鬼鼠一定是瞌睡鼠阵营，其余外来着可能被选做“共犯”）</p>
               <ul className="list-disc list-inside space-y-1 text-white/40">
-                <li><span className="text-white/60">🍳 料理鼠王</span>：技能是投毒；开局随机投毒一名玩家（不是自己），被毒者夜晚获得完全错误的信息（偷看结果也是假的）。料理鼠王知道谁被投毒了。</li>
+                <li><span className="text-white/60">🍳 料理鼠王</span>：技能是黑暗料理；开局随机迷惑一名玩家（不是自己，可能是大盗），被迷惑者会在错误的时间点醒来，看到该时间的真实玩家并执行对应操作。如果大盗被迷惑，大盗会在错误时间偷奶酪，原本时间的瞌睡鼠不会发现大盗。</li>
                 <li><span className="text-white/60">🧸 鼠小弟</span>：技能是捣蛋；开局随机交换两人的骰子（可能是自己），被换者不知情，鼠小弟知情。被调换的对象，当天晚上会按照调换后的时间点醒来，但它以为自己是最初调换前的点数醒来。</li>
                 <li><span className="text-white/60">🍺 酒鬼鼠</span>：技能是醉酒；一定是瞌睡鼠阵营，但以为自己是大盗，全程闭眼睡觉做梦。也会选“共犯”，只有真大盗也选了酒鬼鼠时，酒鬼鼠选的共犯才会生效。🤝但：如果大盗和酒鬼鼠互相选择对方作为共犯，则本局没有共犯，大盗单独行动。</li>
               </ul>
@@ -290,7 +290,7 @@ export default function Lobby({ ws }) {
                 </div>
                 <div className="space-y-2">
                   {[
-                    { key: 'ratatouille', label: '🍳 料理鼠王', desc: '随机投毒一人，使其获得错误信息', value: outsiderRatatouille, setter: setOutsiderRatatouille },
+                    { key: 'ratatouille', label: '🍳 料理鼠王', desc: '黑暗料理迷惑一人，使其在错误时间醒来', value: outsiderRatatouille, setter: setOutsiderRatatouille },
                     { key: 'trickster', label: '🧸 鼠小弟', desc: '随机交换两人骰子，被换者不知情', value: outsiderTrickster, setter: setOutsiderTrickster },
                     { key: 'drunk', label: '🍺 酒鬼鼠', desc: '以为自己是大盗，实际是老鼠', value: outsiderDrunk, setter: setOutsiderDrunk },
                   ].map((o) => (
