@@ -1,6 +1,19 @@
 version: "3.8"
 
 services:
+  redis:
+    image: docker.m.daocloud.io/redis:7-alpine
+    container_name: cheese-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   cheese-thief:
     build: .
     container_name: cheese-thief
@@ -8,3 +21,17 @@ services:
       - "8000:8000"
     restart: unless-stopped
     working_dir: /app/backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - REDIS_URL=redis://redis:6379/0
+
+volumes:
+  redis_data:

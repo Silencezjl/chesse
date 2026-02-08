@@ -4,10 +4,46 @@
 
 ## 技术栈
 
-- **后端**: Python FastAPI + WebSocket
+- **后端**: Python FastAPI + WebSocket + uvloop
 - **前端**: React + Vite + TailwindCSS
+- **数据**: Redis 7 (状态持久化 + 崩溃恢复)
+- **部署**: Docker Compose
 
-## 快速启动
+## Docker 部署（推荐）
+
+### 一键启动
+
+```bash
+docker compose up -d --build
+```
+
+服务启动后访问 `http://localhost:8000` 开始游戏。
+
+包含两个容器：
+- **cheese-thief** — 游戏服务（FastAPI + 前端静态文件），端口 8000
+- **cheese-redis** — Redis 持久化存储
+
+### 停止服务
+
+```bash
+docker compose down
+```
+
+### 查看日志
+
+```bash
+docker compose logs -f cheese-thief
+```
+
+### 重新构建（代码更新后）
+
+```bash
+docker compose up -d --build
+```
+
+> Redis 数据保存在 Docker Volume `chesse_redis_data` 中，`docker compose down` 不会删除数据。如需清除数据：`docker compose down -v`
+
+## 本地开发
 
 ### 1. 安装后端依赖
 ```bash
@@ -33,7 +69,7 @@ cd frontend
 npm run dev
 ```
 
-访问 http://localhost:3000 开始游戏。
+本地开发模式下 Redis 为可选，未连接时自动降级为纯内存模式。
 
 ## 游戏规则
 

@@ -102,3 +102,39 @@ class Player:
         self.peek_result = None
         self.is_accomplice = False
         self.outsider = None
+
+    def serialize(self) -> dict:
+        """Serialize player state for Redis persistence."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "avatar": self.avatar,
+            "role": self.role,
+            "dice": self.dice,
+            "display_dice": self.display_dice,
+            "ready": self.ready,
+            "connected": self.connected,
+            "voted_for": self.voted_for,
+            "has_peeked": self.has_peeked,
+            "peek_target": self.peek_target,
+            "peek_result": self.peek_result,
+            "is_accomplice": self.is_accomplice,
+            "outsider": self.outsider,
+        }
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "Player":
+        """Restore player from serialized data."""
+        p = cls(data["id"], data.get("name", ""), data.get("avatar", ""))
+        p.role = data.get("role")
+        p.dice = data.get("dice", 0)
+        p.display_dice = data.get("display_dice", 0)
+        p.ready = data.get("ready", False)
+        p.connected = False  # always start disconnected on restore
+        p.voted_for = data.get("voted_for")
+        p.has_peeked = data.get("has_peeked", False)
+        p.peek_target = data.get("peek_target")
+        p.peek_result = data.get("peek_result")
+        p.is_accomplice = data.get("is_accomplice", False)
+        p.outsider = data.get("outsider")
+        return p

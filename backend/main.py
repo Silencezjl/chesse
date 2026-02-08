@@ -1,6 +1,7 @@
-import json
+import orjson
 import asyncio
 import uuid
+import logging
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,9 @@ import os
 
 from models import Player, GamePhase, Role
 from game import GameManager, Room
+from state_store import StateStore
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="奶酪大盗 - Cheese Thief")
 
@@ -22,11 +26,34 @@ app.add_middleware(
 )
 
 game_manager = GameManager()
+state_store = StateStore()
 
 # player_id -> WebSocket
 connections: dict[str, WebSocket] = {}
-# player_id -> room_id (for reconnection)
+# player_id -> room_id (in-memory cache, synced with Redis)
 player_rooms: dict[str, str] = {}
+
+
+async def _save_room_to_redis(room_data: dict):
+    """Internal: save room data to Redis."""
+    try:
+        await state_store.save_room(room_data)
+    except Exception as e:
+        logger.error(f"Failed to save room to Redis: {e}")
+
+
+def save_room_to_redis(room: Room):
+    """Fire-and-forget: schedule Redis save without blocking the event loop."""
+    asyncio.create_task(_save_room_to_redis(room.serialize()))
+
+
+async def delete_room_from_redis(room_id: str):
+    """Delete room from Redis."""
+    try:
+        await state_store.delete_room(room_id)
+        await state_store.remove_players_in_room(room_id)
+    except Exception as e:
+        logger.error(f"Failed to delete room {room_id} from Redis: {e}")
 
 
 async def cleanup_stale_rooms_task():
@@ -39,11 +66,50 @@ async def cleanup_stale_rooms_task():
             to_remove = [pid for pid, r_id in player_rooms.items() if r_id == rid]
             for pid in to_remove:
                 player_rooms.pop(pid, None)
+            await delete_room_from_redis(rid)
+
+
+async def periodic_save_task():
+    """Periodically save all room states to Redis as safety net."""
+    while True:
+        await asyncio.sleep(30)  # every 30 seconds
+        for room in game_manager.rooms.values():
+            save_room_to_redis(room)
 
 
 @app.on_event("startup")
 async def startup_event():
+    # Connect to Redis
+    await state_store.connect()
+
+    # Restore rooms from Redis
+    if state_store.available:
+        saved_rooms = await state_store.load_all_rooms()
+        restored = 0
+        for room_data in saved_rooms:
+            try:
+                room = Room.deserialize(room_data)
+                game_manager.rooms[room.id] = room
+                # Restore player_rooms mapping
+                for pid in room.players:
+                    player_rooms[pid] = room.id
+                restored += 1
+            except Exception as e:
+                logger.error(f"Failed to restore room {room_data.get('id')}: {e}")
+        if restored:
+            logger.info(f"Restored {restored} rooms from Redis")
+
     asyncio.create_task(cleanup_stale_rooms_task())
+    asyncio.create_task(periodic_save_task())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Save all rooms before shutdown (must await, process is exiting)
+    for room in game_manager.rooms.values():
+        await _save_room_to_redis(room.serialize())
+    await state_store.close()
+    logger.info("Saved all rooms and closed Redis connection")
 
 
 async def send_to_player(player_id: str, message: dict):
@@ -56,15 +122,23 @@ async def send_to_player(player_id: str, message: dict):
 
 
 async def broadcast_to_room(room: Room, message: dict, exclude: str = None):
-    for pid in room.players:
-        if pid != exclude:
-            await send_to_player(pid, message)
+    tasks = [
+        send_to_player(pid, message)
+        for pid in room.players if pid != exclude
+    ]
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def send_room_state(room: Room):
+    tasks = []
     for pid in room.players:
         state = room.get_room_state(for_player_id=pid)
-        await send_to_player(pid, {"type": "room_state", "data": state})
+        tasks.append(send_to_player(pid, {"type": "room_state", "data": state}))
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    # Fire-and-forget Redis save (non-blocking)
+    save_room_to_redis(room)
 
 
 async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
@@ -79,6 +153,7 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
     player = Player(player_id, name, avatar)
     room = game_manager.create_room(player)
     player_rooms[player_id] = room.id
+    await state_store.set_player_room(player_id, room.id)
 
     # Room settings
     if "thief_see_all_dice" in data:
@@ -117,6 +192,7 @@ async def handle_join_room(ws: WebSocket, player_id: str, data: dict):
         # Reconnection
         room.players[player_id].connected = True
         player_rooms[player_id] = room.id
+        await state_store.set_player_room(player_id, room.id)
         await send_room_state(room)
         return
 
@@ -133,6 +209,7 @@ async def handle_join_room(ws: WebSocket, player_id: str, data: dict):
     player = Player(player_id, name, avatar)
     room.add_player(player)
     player_rooms[player_id] = room.id
+    await state_store.set_player_room(player_id, room.id)
 
     await broadcast_to_room(room, {
         "type": "player_joined",
@@ -396,9 +473,11 @@ async def handle_leave_room(ws: WebSocket, player_id: str, data: dict):
 
     should_delete = room.remove_player(player_id)
     player_rooms.pop(player_id, None)
+    await state_store.remove_player_room(player_id)
 
     if should_delete:
         game_manager.remove_room(room.id)
+        await delete_room_from_redis(room.id)
     else:
         await send_room_state(room)
 
@@ -439,6 +518,7 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
     room.players[player_id].connected = True
     room.update_disconnect_timer()
     player_rooms[player_id] = room.id
+    await state_store.set_player_room(player_id, room.id)
 
     # Send full room state
     await send_room_state(room)
@@ -545,8 +625,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         while True:
             raw = await websocket.receive_text()
             try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
+                msg = orjson.loads(raw)
+            except (orjson.JSONDecodeError, ValueError):
                 continue
 
             msg_type = msg.get("type")
@@ -573,6 +653,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 "data": {"player_id": player_id, "name": room.players[player_id].name}
             })
             await send_room_state(room)
+            # Extra save on disconnect to persist the disconnected state
+            save_room_to_redis(room)
 
 
 # Serve frontend static files
