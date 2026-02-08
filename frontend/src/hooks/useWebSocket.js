@@ -33,6 +33,16 @@ export function savePlayerName(name) {
   }
 }
 
+export function getSavedAvatar() {
+  return localStorage.getItem('cheese_player_avatar') || null;
+}
+
+export function savePlayerAvatar(avatar) {
+  if (avatar) {
+    localStorage.setItem('cheese_player_avatar', avatar);
+  }
+}
+
 export default function useWebSocket() {
   const [connected, setConnected] = useState(false);
   const [playerId] = useState(getPlayerId);
