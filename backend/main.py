@@ -87,6 +87,13 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
         val = int(data["max_dice"])
         if 6 <= val <= 10:
             room.max_dice = val
+    # Outsider settings
+    if "outsider_ratatouille" in data:
+        room.outsider_ratatouille = bool(data["outsider_ratatouille"])
+    if "outsider_trickster" in data:
+        room.outsider_trickster = bool(data["outsider_trickster"])
+    if "outsider_drunk" in data:
+        room.outsider_drunk = bool(data["outsider_drunk"])
 
     await ws.send_json({
         "type": "room_created",
@@ -148,9 +155,9 @@ async def handle_ready(ws: WebSocket, player_id: str, data: dict):
     if room.all_ready():
         await asyncio.sleep(1)
         room.start_game()
-        # Send personalized night info from precomputed night_info
+        # Send personalized night info from precomputed night_info (stripped of internal flags)
         for pid in room.players:
-            night_data = room.night_info.get(pid, {})
+            night_data = room.get_player_night_info(pid)
             await send_to_player(pid, {"type": "game_start", "data": night_data})
 
         await send_room_state(room)
@@ -207,15 +214,75 @@ async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
             }
         })
 
-        await send_to_player(target_id, {
-            "type": "you_are_accomplice",
+        # Check if thief chose drunk mouse (don't notify drunk mouse as accomplice)
+        drunk_id = room.outsider_id if room.outsider_type == "drunk" else None
+        if drunk_id and target_id == drunk_id:
+            # Don't send you_are_accomplice to drunk mouse (they think they're thief)
+            # But if resolution happened (both chose), notify the real accomplice
+            if room.accomplice_id and room.accomplice_id != drunk_id:
+                real_acc_id = room.accomplice_id
+                await send_to_player(real_acc_id, {
+                    "type": "you_are_accomplice",
+                    "data": {
+                        "thief_id": player_id,
+                        "thief_name": thief.name,
+                        "thief_dice": thief.display_dice,
+                        "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
+                    }
+                })
+        else:
+            await send_to_player(target_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": player_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.display_dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                }
+            })
+
+        await send_room_state(room)
+    else:
+        await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
+
+
+async def handle_drunk_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
+    """Handle drunk mouse choosing their fake accomplice."""
+    room = game_manager.find_player_room(player_id)
+    if not room or room.phase != GamePhase.NIGHT:
+        return
+
+    target_id = data.get("target_id")
+    if not target_id:
+        return
+
+    success = room.drunk_choose_accomplice(player_id, target_id)
+    if success:
+        accomplice = room.players[target_id]
+
+        # Tell drunk mouse their choice was made (they think they're thief)
+        await ws.send_json({
+            "type": "accomplice_chosen",
             "data": {
-                "thief_id": player_id,
-                "thief_name": thief.name,
-                "thief_dice": thief.dice,
-                "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                "accomplice_id": target_id,
+                "accomplice_name": accomplice.name,
+                "message": f"你选择了 {accomplice.name} 作为共犯"
             }
         })
+
+        # If resolution happened (thief chose drunk mouse + drunk mouse chose target),
+        # notify the real accomplice
+        if room.accomplice_id and room.accomplice_id == target_id:
+            thief = room.players[room.thief_id]
+            await send_to_player(target_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": room.thief_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.display_dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
+                }
+            })
 
         await send_room_state(room)
     else:
@@ -352,6 +419,7 @@ MESSAGE_HANDLERS = {
     "ready": handle_ready,
     "peek": handle_peek,
     "choose_accomplice": handle_choose_accomplice,
+    "drunk_choose_accomplice": handle_drunk_choose_accomplice,
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,

@@ -27,6 +27,9 @@ export default function Lobby({ ws }) {
   const [showNamePicker, setShowNamePicker] = useState(false);
   const [thiefSeeAllDice, setThiefSeeAllDice] = useState(true);
   const [maxDice, setMaxDice] = useState(6);
+  const [outsiderRatatouille, setOutsiderRatatouille] = useState(false);
+  const [outsiderTrickster, setOutsiderTrickster] = useState(false);
+  const [outsiderDrunk, setOutsiderDrunk] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
@@ -35,7 +38,14 @@ export default function Lobby({ ws }) {
   };
 
   const handleCreate = () => {
-    ws.send('create_room', { name, avatar, thief_see_all_dice: thiefSeeAllDice, max_dice: maxDice });
+    ws.send('create_room', {
+      name, avatar,
+      thief_see_all_dice: thiefSeeAllDice,
+      max_dice: maxDice,
+      outsider_ratatouille: outsiderRatatouille,
+      outsider_trickster: outsiderTrickster,
+      outsider_drunk: outsiderDrunk,
+    });
   };
 
   const handleJoinRoom = (roomId) => {
@@ -83,6 +93,42 @@ export default function Lobby({ ws }) {
           <div className="mt-8 text-xs text-white/30 space-y-1">
             <p>🐭 瞌睡鼠：找出谁偷了奶酪</p>
             <p>🧀 奶酪大盗：隐藏身份蒙混过关</p>
+          </div>
+        </div>
+
+        <div className="glass-card p-6 mt-4 text-left">
+          <h3 className="text-sm font-bold text-cheese-400 mb-3">📜 游戏规则</h3>
+          <div className="text-xs text-white/50 space-y-3 leading-relaxed">
+            <div>
+              <p className="font-medium text-white/70 mb-1">🌙 1. 夜晚阶段</p>
+              <p>天黑请闭眼，按骰子点数顺序，对应点数的玩家睁眼并行动。</p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-white/40">
+                <li>如果一个瞌睡鼠独自醒来（大盗不行），可以秘密地查看任意一名玩家的骰子。</li>
+                <li>如果不止一个人醒来，则不能查看骰子，但可以相互监视。</li>
+                <li>无论多少人同时睁眼，大盗醒来都一定要偷走奶酪（即使被监视）。</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-white/70 mb-1">🤝 2. 选择共犯</p>
+              <p>大盗在最后会选择一名共犯，与大盗同赢同输。</p>
+            </div>
+            <div>
+              <p className="font-medium text-white/70 mb-1">☀️ 3. 白天讨论</p>
+              <p>所有玩家完成操作后，公开讨论，投票指认奶酪大盗。</p>
+            </div>
+            <div>
+              <p className="font-medium text-white/70 mb-1">🗳️ 4. 投票结果</p>
+              <p>如果大盗得票最多，大盗失败；否则大盗成功逃脱！</p>
+            </div>
+            <div className="border-t border-white/10 pt-3 mt-3">
+              <p className="font-medium text-white/70 mb-2">🌟 外来者角色（可选）</p>
+              <p className="mb-2">开启后每局随机出现一个外来者，增加游戏随机性和趣味性。（酒鬼鼠一定是瞌睡鼠阵营，其余外来着可能被选做“共犯”）</p>
+              <ul className="list-disc list-inside space-y-1 text-white/40">
+                <li><span className="text-white/60">🍳 料理鼠王</span>：技能是投毒；开局随机投毒一名玩家（不是自己），被毒者夜晚获得完全错误的信息（偷看结果也是假的）。料理鼠王知道谁被投毒了。</li>
+                <li><span className="text-white/60">🧸 鼠小弟</span>：技能是捣蛋；开局随机交换两人的骰子（可能是自己），被换者不知情，鼠小弟知情。被调换的对象，当天晚上会按照调换后的时间点醒来，但它以为自己是最初调换前的点数醒来。</li>
+                <li><span className="text-white/60">🍺 酒鬼鼠</span>：技能是醉酒；一定是瞌睡鼠阵营，但以为自己是大盗，全程闭眼睡觉做梦。也会选“共犯”，只有真大盗也选了酒鬼鼠时，酒鬼鼠选的共犯才会生效。🤝但：如果大盗和酒鬼鼠互相选择对方作为共犯，则本局没有共犯，大盗单独行动。</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -232,6 +278,41 @@ export default function Lobby({ ws }) {
                   </div>
                 </div>
               </div>
+
+              {/* Outsider Settings */}
+              <div className="p-3 bg-white/5 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-cheese-400">🌟</span>
+                  <div>
+                    <div className="text-sm font-medium">外来者角色</div>
+                    <div className="text-xs text-white/40">开启后每局随机出现一个外来者</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { key: 'ratatouille', label: '🍳 料理鼠王', desc: '随机投毒一人，使其获得错误信息', value: outsiderRatatouille, setter: setOutsiderRatatouille },
+                    { key: 'trickster', label: '🧸 鼠小弟', desc: '随机交换两人骰子，被换者不知情', value: outsiderTrickster, setter: setOutsiderTrickster },
+                    { key: 'drunk', label: '🍺 酒鬼鼠', desc: '以为自己是大盗，实际是老鼠', value: outsiderDrunk, setter: setOutsiderDrunk },
+                  ].map((o) => (
+                    <div
+                      key={o.key}
+                      onClick={() => o.setter(!o.value)}
+                      className="flex items-center justify-between p-2 rounded-lg cursor-pointer hover:bg-white/5 transition"
+                    >
+                      <div>
+                        <div className="text-xs font-medium">{o.label}</div>
+                        <div className="text-xs text-white/30">{o.desc}</div>
+                      </div>
+                      <div className={`w-9 h-5 rounded-full transition-colors relative ${
+                        o.value ? 'bg-cheese-500' : 'bg-white/20'
+                      }`}>
+                        <div className="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                          style={{ transform: o.value ? 'translateX(16px)' : 'translateX(2px)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -266,6 +347,9 @@ export default function Lobby({ ws }) {
                         <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
                         <span>🎲 {room.max_dice}面</span>
                         <span>{room.thief_see_all_dice ? '👁 大盗可见点数' : '🙈 大盗不可见点数'}</span>
+                        {room.outsiders && room.outsiders.length > 0 && (
+                          <span>🌟 {room.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}</span>
+                        )}
                       </div>
                     </div>
                     <button

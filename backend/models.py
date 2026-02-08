@@ -57,6 +57,7 @@ class Player:
         self.avatar = avatar or random_avatar()
         self.role: Optional[Role] = None
         self.dice: int = 0
+        self.display_dice: int = 0  # What the player thinks their dice is (may differ from actual if swapped)
         self.ready: bool = False
         self.connected: bool = True
         self.voted_for: Optional[str] = None
@@ -64,6 +65,7 @@ class Player:
         self.peek_target: Optional[str] = None
         self.peek_result: Optional[int] = None
         self.is_accomplice: bool = False
+        self.outsider: Optional[str] = None  # None, "ratatouille", "trickster", "drunk"
 
     def to_dict(self, reveal: bool = False, is_self: bool = False) -> dict:
         data = {
@@ -75,8 +77,13 @@ class Player:
         }
         if is_self or reveal:
             data["role"] = self.role
-            data["dice"] = self.dice
+            data["dice"] = self.dice if reveal else self.display_dice
             data["is_accomplice"] = self.is_accomplice
+            if reveal and self.outsider:
+                data["outsider"] = self.outsider
+            if reveal and self.display_dice != self.dice:
+                data["display_dice"] = self.display_dice
+                data["actual_dice"] = self.dice
         if is_self:
             data["has_peeked"] = self.has_peeked
             data["peek_target"] = self.peek_target
@@ -87,9 +94,11 @@ class Player:
     def reset_game_state(self):
         self.role = None
         self.dice = 0
+        self.display_dice = 0
         self.ready = False
         self.voted_for = None
         self.has_peeked = False
         self.peek_target = None
         self.peek_result = None
         self.is_accomplice = False
+        self.outsider = None

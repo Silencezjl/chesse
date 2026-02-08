@@ -12,6 +12,11 @@ function DiceIcon({ value, size = 20 }) {
 }
 
 function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccomplice, myVote, canAccomplice, noVoteTarget }) {
+  const OUTSIDER_LABELS = {
+    ratatouille: '🍳 料理鼠王',
+    trickster: '🧸 鼠小弟',
+    drunk: '🍺 酒鬼鼠',
+  };
   const roleLabel = {
     thief: '🧀 奶酪大盗',
     mouse: '🐭 瞌睡鼠',
@@ -48,6 +53,12 @@ function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccompli
           'bg-blue-500/30 text-blue-300'
         }`}>
           {roleLabel[player.role] || player.role}
+        </div>
+      )}
+      {/* Show outsider tag in result phase */}
+      {player.outsider && (
+        <div className="text-xs px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-300">
+          {OUTSIDER_LABELS[player.outsider] || player.outsider}
         </div>
       )}
 
@@ -137,7 +148,11 @@ export default function Room({ ws }) {
   };
 
   const handleAccomplice = (targetId) => {
-    send('choose_accomplice', { target_id: targetId });
+    if (isMeFakeThief) {
+      send('drunk_choose_accomplice', { target_id: targetId });
+    } else {
+      send('choose_accomplice', { target_id: targetId });
+    }
   };
 
   const handleNightDone = () => {
@@ -160,11 +175,13 @@ export default function Room({ ws }) {
     send('leave_room', {});
   };
 
-  const isMeThief = gameInfo?.role === 'thief';
+  const isMeDrunk = gameInfo?.is_drunk || gameInfo?.outsider_actual === 'drunk';
+  const isMeThief = gameInfo?.role === 'thief' && !isMeDrunk;
+  const isMeFakeThief = gameInfo?.role === 'thief' && isMeDrunk;
   const isMeAccomplice = gameInfo?.role === 'accomplice';
   // Bug1: Use can_peek from night_info (respects dice group rule)
   const canPeek = phase === 'night' && gameInfo?.can_peek && !gameInfo?.has_peeked;
-  const canAccomplice = phase === 'night' && isMeThief && gameInfo?.can_choose_accomplice;
+  const canAccomplice = phase === 'night' && (isMeThief || isMeFakeThief) && gameInfo?.can_choose_accomplice;
 
   return (
     <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
@@ -186,6 +203,12 @@ export default function Room({ ws }) {
               🎲 {roomState.max_dice || 6}面
               <span className="mx-1">·</span>
               {roomState.thief_see_all_dice ? '👁 大盗可见点数' : '🙈 大盗不可见点数'}
+              {roomState.outsiders && roomState.outsiders.length > 0 && (
+                <>
+                  <span className="mx-1">·</span>
+                  🌟 {roomState.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -213,15 +236,15 @@ export default function Room({ ws }) {
       {/* Game Info Banner */}
       {(phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
         <div className={`glass-card p-4 ${
-          isMeThief ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : 'border-blue-500/30'
+          (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : 'border-blue-500/30'
         }`}>
           <div className="flex items-center gap-3">
             <div className="text-4xl">
-              {isMeThief ? '🧀' : isMeAccomplice ? '🤝' : '🐭'}
+              {isMeThief || isMeFakeThief ? '🧀' : isMeAccomplice ? '🤝' : '🐭'}
             </div>
             <div className="flex-1">
               <div className="font-bold text-lg">
-                {isMeThief ? '你是奶酪大盗！' : isMeAccomplice ? '你是共犯！' : '你是瞌睡鼠'}
+                {isMeThief || isMeFakeThief ? '你是奶酪大盗！' : isMeAccomplice ? '你是共犯！' : '你是瞌睡鼠'}
               </div>
               <div className="text-sm text-white/60">
                 你的骰子: <span className="text-cheese-400 font-bold">{gameInfo.dice}</span> 点
@@ -261,13 +284,20 @@ export default function Room({ ws }) {
                 </div>
               )}
 
+              {/* Outsider info */}
+              {gameInfo.outsider_info && (
+                <div className="text-sm text-purple-300 mt-1 whitespace-pre-line">
+                  {gameInfo.outsider_info}
+                </div>
+              )}
+
               {/* Accomplice info */}
               {isMeAccomplice && gameInfo.thief_name && (
                 <div className="text-sm text-yellow-300 mt-1">
                   大盗是 {gameInfo.thief_name}，骰子 {gameInfo.thief_dice} 点
                 </div>
               )}
-              {isMeThief && gameInfo.accomplice_name && (
+              {(isMeThief || isMeFakeThief) && gameInfo.accomplice_name && (
                 <div className="text-sm text-purple-300 mt-1">
                   你的共犯: {gameInfo.accomplice_name}
                 </div>
@@ -275,8 +305,8 @@ export default function Room({ ws }) {
             </div>
           </div>
 
-          {/* Thief: All dice overview */}
-          {isMeThief && gameInfo.all_dice && (
+          {/* Thief: All dice overview (also shown to drunk mouse who thinks they're thief) */}
+          {(isMeThief || isMeFakeThief) && gameInfo.all_dice && (
             <div className="mt-3 p-3 bg-black/20 rounded-lg">
               <div className="text-xs text-white/50 mb-2">所有玩家骰子点数：</div>
               <div className="flex flex-wrap gap-2">
@@ -315,7 +345,9 @@ export default function Room({ ws }) {
           {gameInfo?.result && (
             <div className="text-sm text-white/50">
               奶酪大盗: {gameInfo.result.thief_name}
-              {gameInfo.result.accomplice_name && ` | 共犯: ${gameInfo.result.accomplice_name}`}
+              {gameInfo.result.accomplice_name
+                ? ` | 共犯: ${gameInfo.result.accomplice_name}`
+                : gameInfo.result.no_accomplice_reason === 'mutual_selection' ? ' | 🍺↔️ 本局无共犯（大盗与酒鬼鼠互选抵消）' : ''}
             </div>
           )}
         </div>
@@ -332,14 +364,20 @@ export default function Room({ ws }) {
                 accomplice: 'border-yellow-500/40 bg-yellow-500/10',
                 mouse: 'border-blue-500/40 bg-blue-500/10',
               };
-              const roleLabel = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
+              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
+              const outsiderLabels = { ratatouille: '🍳 料理鼠王', trickster: '🧸 鼠小弟', drunk: '🍺 酒鬼鼠' };
               return (
                 <div key={entry.player_id} className={`border rounded-lg p-3 ${roleColors[entry.role] || roleColors.mouse}`}>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-xl">{entry.avatar}</span>
                     <span className="font-medium">{entry.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{roleLabel[entry.role] || entry.role}</span>
-                    <span className="text-xs text-cheese-400">(骰子: {entry.dice}点)</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{roleLabels[entry.role] || entry.role}</span>
+                    {entry.outsider_label && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{entry.outsider_label}</span>
+                    )}
+                    <span className="text-xs text-cheese-400">
+                      (骰子: {entry.dice}点{entry.display_dice != null && entry.display_dice !== entry.dice ? ` ← 以为${entry.display_dice}点` : ''})
+                    </span>
                   </div>
                   <div className="pl-8 space-y-0.5">
                     {entry.actions.map((action, i) => (
@@ -418,7 +456,7 @@ export default function Room({ ws }) {
           const doneCount = roomState.night_done_count || 0;
           const totalCount = roomState.night_total || 0;
           let hint = '';
-          if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
+          if (!canEnd && (isMeThief || isMeFakeThief) && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
           else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
           else if (!canEnd) hint = '⏳ 等待所有玩家完成夜晚操作...';
           return (
