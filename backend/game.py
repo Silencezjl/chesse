@@ -266,19 +266,12 @@ class Room:
 
             # Outsider-specific info for this player
             if player.outsider == "ratatouille":
-                poison_target = self.players[self.poison_target_id]
                 info["outsider"] = "ratatouille"
-                info["outsider_info"] = f"🍳 你是料理鼠王！你用黑暗料理迷惑了 {poison_target.name}"
-                info["poison_target_id"] = self.poison_target_id
-                info["poison_target_name"] = poison_target.name
+                info["outsider_info"] = "🍳 你是料理鼠王！你的黑暗料理迷惑了一名玩家。"
             elif player.outsider == "trickster":
-                swap = self.swap_info
-                p1_name = self.players[swap["pid1"]].name
-                p2_name = self.players[swap["pid2"]].name
                 info["outsider"] = "trickster"
-                info["outsider_info"] = f"\ud83e\uddf8 \u4f60\u662f\u9f20\u5c0f\u5f1f\uff01\u4f60\u5728\u5f00\u5c40\u8c03\u6362\u4e86 {p1_name}\uff08{swap['dice1_orig']}\u70b9\uff09\u548c {p2_name}\uff08{swap['dice2_orig']}\u70b9\uff09\u7684\u9ab0\u5b50\u3002"
+                info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋调换了两名玩家的骰子。"
                 info["can_peek"] = False  # trickster can never peek
-                info["swap_info"] = swap
 
             self.night_info[pid] = info
 
@@ -401,13 +394,9 @@ class Room:
 
         # If poisoned player is also an outsider, preserve their outsider info
         if player.outsider == "trickster":
-            swap = self.swap_info
-            p1_name = self.players[swap["pid1"]].name
-            p2_name = self.players[swap["pid2"]].name
             info["outsider"] = "trickster"
-            info["outsider_info"] = f"🧸 你是鼠小弟！你在开局调换了 {p1_name}（{swap['dice1_orig']}点）和 {p2_name}（{swap['dice2_orig']}点）的骰子。"
+            info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋调换了两名玩家的骰子，但你不知道是谁。"
             info["can_peek"] = False  # trickster can never peek
-            info["swap_info"] = swap
 
         self.night_info[pid] = info
 
