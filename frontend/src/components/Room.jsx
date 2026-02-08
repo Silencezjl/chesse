@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Copy, LogOut, Check, Eye, Vote, Users,
+  Copy, LogOut, Check, Eye, Vote, Users, Settings, Crown,
   RotateCcw, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6, UserPlus, Hand
 } from 'lucide-react';
 
@@ -11,7 +11,7 @@ function DiceIcon({ value, size = 20 }) {
   return Icon ? <Icon size={size} /> : <span>{value}</span>;
 }
 
-function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccomplice, myVote, canAccomplice, noVoteTarget }) {
+function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, onVote, onAccomplice, myVote, canAccomplice, noVoteTarget }) {
   const OUTSIDER_LABELS = {
     ratatouille: '🍳 料理鼠王',
     trickster: '🧸 鼠小弟',
@@ -43,7 +43,11 @@ function PlayerCard({ player, isMe, isMeThief, phase, onPeek, onVote, onAccompli
       )}
 
       <div className="text-3xl md:text-4xl">{player.avatar}</div>
-      <div className="text-sm font-medium truncate max-w-full">{player.name}</div>
+      <div className="text-sm font-medium truncate max-w-full flex items-center gap-1">
+        {index != null && <span className="text-white/40">{index}.</span>}
+        {player.name}
+        {isCreator && <Crown size={12} className="text-cheese-400 flex-shrink-0" />}
+      </div>
 
       {/* Show role for self or in result phase */}
       {player.role && (
@@ -131,7 +135,10 @@ export default function Room({ ws }) {
 
   const { room_id, phase, players, player_count, min_players, max_players, creator_id } = roomState;
   const me = players[playerId];
-  const playerList = Object.values(players);
+  const playerOrder = roomState.player_order || [];
+  const playerList = playerOrder.length > 0
+    ? playerOrder.filter(id => players[id]).map(id => players[id])
+    : Object.values(players);
 
   const copyRoomId = () => {
     navigator.clipboard.writeText(room_id);
@@ -182,6 +189,7 @@ export default function Room({ ws }) {
   // Bug1: Use can_peek from night_info (respects dice group rule)
   const canPeek = phase === 'night' && gameInfo?.can_peek && !gameInfo?.has_peeked;
   const canAccomplice = phase === 'night' && (isMeThief || isMeFakeThief) && gameInfo?.can_choose_accomplice;
+  const isCreator = playerId === creator_id;
 
   return (
     <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
@@ -210,6 +218,7 @@ export default function Room({ ws }) {
                 </>
               )}
             </div>
+            {isCreator && <div className="text-xs text-cheese-400 flex items-center gap-1 mt-0.5"><Crown size={10} /> 你是房主</div>}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -234,6 +243,66 @@ export default function Room({ ws }) {
           )}
         </div>
       </div>
+
+      {/* Room Settings (creator only, waiting phase) */}
+      {phase === 'waiting' && isCreator && (
+        <div className="glass-card p-4">
+          <div className="text-sm text-white/50 mb-3 flex items-center gap-1">
+            <Settings size={14} /> 房间设置（房主）
+          </div>
+          <div className="flex flex-wrap gap-3 items-center">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roomState.thief_see_all_dice}
+                onChange={(e) => send('update_room_settings', { thief_see_all_dice: e.target.checked })}
+                className="accent-cheese-400"
+              />
+              <span className="text-white/70">👁 大盗可见所有点数</span>
+            </label>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-white/70">🎲 骰子面数</span>
+              <select
+                value={roomState.max_dice || 6}
+                onChange={(e) => send('update_room_settings', { max_dice: parseInt(e.target.value) })}
+                className="bg-white/10 text-white rounded px-2 py-1 text-sm border border-white/20"
+              >
+                {[6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="w-full border-t border-white/10 pt-2 mt-1 flex flex-wrap gap-3">
+              <span className="text-sm text-white/50">🌟 外来者：</span>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.outsiders?.includes('ratatouille')}
+                  onChange={(e) => send('update_room_settings', { outsider_ratatouille: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🍳 料理鼠王</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.outsiders?.includes('trickster')}
+                  onChange={(e) => send('update_room_settings', { outsider_trickster: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🧸 鼠小弟</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.outsiders?.includes('drunk')}
+                  onChange={(e) => send('update_room_settings', { outsider_drunk: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🍺 酒鬼鼠</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Game Info Banner */}
       {(phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
@@ -402,14 +471,16 @@ export default function Room({ ws }) {
           <Users size={14} /> 玩家列表
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {playerList.map((p) => (
+          {playerList.map((p, i) => (
             <PlayerCard
               key={p.id}
               player={{
                 ...p,
                 vote_count: roomState.vote_results?.[p.id] || 0,
               }}
+              index={i + 1}
               isMe={p.id === playerId}
+              isCreator={p.id === creator_id}
               isMeThief={isMeThief}
               phase={phase}
               onPeek={canPeek ? handlePeek : null}
@@ -503,12 +574,15 @@ export default function Room({ ws }) {
           </div>
         )}
 
-        {phase === 'result' && (
+        {phase === 'result' && isCreator && (
           <button onClick={handleNewGame} className="btn-primary">
             <span className="flex items-center gap-2">
               <RotateCcw size={16} /> 再来一局
             </span>
           </button>
+        )}
+        {phase === 'result' && !isCreator && (
+          <span className="text-sm text-white/40">等待房主开启下一局...</span>
         )}
       </div>
     </div>

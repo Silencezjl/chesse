@@ -372,6 +372,10 @@ async def handle_new_game(ws: WebSocket, player_id: str, data: dict):
     if not room:
         return
 
+    if room.creator_id != player_id:
+        await ws.send_json({"type": "error", "data": {"message": "只有房主可以开启下一局"}})
+        return
+
     room.reset_for_new_game()
     await broadcast_to_room(room, {
         "type": "new_game",
@@ -455,6 +459,36 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
         await send_room_state(room)
 
 
+async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict):
+    """Allow the room creator to update room settings during WAITING phase."""
+    room = game_manager.find_player_room(player_id)
+    if not room:
+        return
+
+    if room.creator_id != player_id:
+        await ws.send_json({"type": "error", "data": {"message": "只有房主可以修改房间设置"}})
+        return
+
+    if room.phase != GamePhase.WAITING:
+        await ws.send_json({"type": "error", "data": {"message": "游戏进行中无法修改设置"}})
+        return
+
+    if "thief_see_all_dice" in data:
+        room.thief_see_all_dice = bool(data["thief_see_all_dice"])
+    if "max_dice" in data:
+        val = int(data["max_dice"])
+        if 6 <= val <= 10:
+            room.max_dice = val
+    if "outsider_ratatouille" in data:
+        room.outsider_ratatouille = bool(data["outsider_ratatouille"])
+    if "outsider_trickster" in data:
+        room.outsider_trickster = bool(data["outsider_trickster"])
+    if "outsider_drunk" in data:
+        room.outsider_drunk = bool(data["outsider_drunk"])
+
+    await send_room_state(room)
+
+
 MESSAGE_HANDLERS = {
     "create_room": handle_create_room,
     "join_room": handle_join_room,
@@ -467,6 +501,7 @@ MESSAGE_HANDLERS = {
     "request_vote": handle_request_vote,
     "vote": handle_vote,
     "new_game": handle_new_game,
+    "update_room_settings": handle_update_room_settings,
     "leave_room": handle_leave_room,
     "get_game_info": handle_get_game_info,
     "list_rooms": handle_list_rooms,

@@ -28,6 +28,7 @@ class Room:
         self._broadcast_func = None
         self.night_info: dict[str, dict] = {}
         self.vote_requests: set[str] = set()
+        self.player_order: list[str] = []  # shuffled display order
         self.all_disconnected_since: Optional[float] = None  # timestamp when all players disconnected
         # Outsider settings (which outsiders are enabled)
         self.outsider_ratatouille: bool = False  # 料理鼠王 🍳
@@ -113,6 +114,10 @@ class Room:
     def start_game(self):
         player_ids = list(self.players.keys())
         random.shuffle(player_ids)
+
+        # Shuffle display order for player list
+        self.player_order = list(player_ids)
+        random.shuffle(self.player_order)
 
         # Assign roles
         self.thief_id = player_ids[0]
@@ -912,6 +917,7 @@ class Room:
             "min_players": self.min_players,
             "max_players": self.max_players,
             "players": players_data,
+            "player_order": self.player_order if self.player_order else list(self.players.keys()),
             "creator_id": self.creator_id,
             "thief_see_all_dice": self.thief_see_all_dice,
             "max_dice": self.max_dice,
