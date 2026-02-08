@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, LogIn, Shuffle, ChevronRight, Eye, EyeOff, RefreshCw, Users } from 'lucide-react';
+import { getSavedName, savePlayerName } from '../hooks/useWebSocket';
 
 const AVATARS = [
   "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
@@ -21,7 +22,7 @@ const NAMES = [
 
 export default function Lobby({ ws }) {
   const [mode, setMode] = useState(null); // null | 'create' | 'join'
-  const [name, setName] = useState(() => NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 99));
+  const [name, setName] = useState(() => getSavedName() || NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 99));
   const [avatar, setAvatar] = useState(() => AVATARS[Math.floor(Math.random() * AVATARS.length)]);
   const [showAllAvatars, setShowAllAvatars] = useState(false);
   const [showNamePicker, setShowNamePicker] = useState(false);
@@ -38,6 +39,7 @@ export default function Lobby({ ws }) {
   };
 
   const handleCreate = () => {
+    savePlayerName(name);
     ws.send('create_room', {
       name, avatar,
       thief_see_all_dice: thiefSeeAllDice,
@@ -49,6 +51,7 @@ export default function Lobby({ ws }) {
   };
 
   const handleJoinRoom = (roomId) => {
+    savePlayerName(name);
     ws.send('join_room', { room_id: roomId, name, avatar });
   };
 

@@ -227,9 +227,11 @@ export default function Room({ ws }) {
             {phase === 'voting' && '🗳️ 投票'}
             {phase === 'result' && '🏆 结果'}
           </div>
-          <button onClick={handleLeave} className="p-2 hover:bg-white/10 rounded-lg transition text-white/50 hover:text-red-400">
-            <LogOut size={18} />
-          </button>
+          {(phase === 'waiting' || phase === 'result') && (
+            <button onClick={handleLeave} className="p-2 hover:bg-white/10 rounded-lg transition text-white/50 hover:text-red-400">
+              <LogOut size={18} />
+            </button>
+          )}
         </div>
       </div>
 

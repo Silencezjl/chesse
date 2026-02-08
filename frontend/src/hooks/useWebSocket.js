@@ -11,6 +11,28 @@ function getPlayerId() {
   return id;
 }
 
+function getSavedRoomId() {
+  return localStorage.getItem('cheese_room_id') || null;
+}
+
+function saveRoomId(roomId) {
+  if (roomId) {
+    localStorage.setItem('cheese_room_id', roomId);
+  } else {
+    localStorage.removeItem('cheese_room_id');
+  }
+}
+
+export function getSavedName() {
+  return localStorage.getItem('cheese_player_name') || null;
+}
+
+export function savePlayerName(name) {
+  if (name) {
+    localStorage.setItem('cheese_player_name', name);
+  }
+}
+
 export default function useWebSocket() {
   const [connected, setConnected] = useState(false);
   const [playerId] = useState(getPlayerId);
@@ -76,10 +98,20 @@ export default function useWebSocket() {
           // If server says we have an active room, request full state
           if (msg.data.room_id) {
             ws.send(JSON.stringify({ type: 'get_game_info', data: {} }));
+          } else {
+            // Server doesn't know us, try rejoin from localStorage
+            const savedRoom = getSavedRoomId();
+            if (savedRoom) {
+              ws.send(JSON.stringify({ type: 'rejoin_room', data: { room_id: savedRoom } }));
+            }
           }
           break;
         case 'room_state':
           setRoomState(msg.data);
+          // Save room_id to localStorage for rejoin
+          if (msg.data.room_id) {
+            saveRoomId(msg.data.room_id);
+          }
           // Merge my_info into gameInfo for refresh recovery (Bug3)
           if (msg.data.my_info) {
             setGameInfo(prev => prev ? { ...prev, ...msg.data.my_info } : msg.data.my_info);
@@ -142,6 +174,10 @@ export default function useWebSocket() {
         case 'left_room':
           setRoomState(null);
           setGameInfo(null);
+          saveRoomId(null);
+          break;
+        case 'no_room':
+          saveRoomId(null);
           break;
         case 'error':
           addNotification(msg.data.message, 'error');

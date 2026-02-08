@@ -385,6 +385,11 @@ async def handle_leave_room(ws: WebSocket, player_id: str, data: dict):
     if not room:
         return
 
+    # Prevent leaving during active game
+    if room.phase in (GamePhase.NIGHT, GamePhase.DAY, GamePhase.VOTING):
+        await ws.send_json({"type": "error", "data": {"message": "游戏进行中无法退出房间"}})
+        return
+
     should_delete = room.remove_player(player_id)
     player_rooms.pop(player_id, None)
 
@@ -413,9 +418,47 @@ async def handle_list_rooms(ws: WebSocket, player_id: str, data: dict):
     await ws.send_json({"type": "room_list", "data": {"rooms": rooms}})
 
 
+async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
+    """Try to rejoin a room by saved room_id. Used when client reloads with saved state."""
+    room_id = data.get("room_id", "").strip()
+    if not room_id:
+        await ws.send_json({"type": "no_room", "data": {}})
+        return
+
+    room = game_manager.get_room(room_id)
+    if not room or player_id not in room.players:
+        # Room gone or player not in it
+        await ws.send_json({"type": "left_room", "data": {}})
+        return
+
+    # Reconnect the player
+    room.players[player_id].connected = True
+    room.update_disconnect_timer()
+    player_rooms[player_id] = room.id
+
+    # Send full room state
+    await send_room_state(room)
+
+    # Notify others
+    await broadcast_to_room(room, {
+        "type": "player_reconnected",
+        "data": {"player_id": player_id, "name": room.players[player_id].name}
+    }, exclude=player_id)
+
+    # Check if all votes are now in
+    if room.phase == GamePhase.VOTING and room.all_voted():
+        result = room.tally_votes()
+        await broadcast_to_room(room, {
+            "type": "game_result",
+            "data": result
+        })
+        await send_room_state(room)
+
+
 MESSAGE_HANDLERS = {
     "create_room": handle_create_room,
     "join_room": handle_join_room,
+    "rejoin_room": handle_rejoin_room,
     "ready": handle_ready,
     "peek": handle_peek,
     "choose_accomplice": handle_choose_accomplice,
