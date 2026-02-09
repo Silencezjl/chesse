@@ -27,13 +27,13 @@ body.theme-night {
 }
 
 body.theme-day {
-  background: linear-gradient(135deg, #fef9c3 0%, #fde68a 30%, #fcd34d 100%);
-  color: #1e293b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fde68a 100%);
+  color: #292524;
 }
 
 body.theme-result {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 30%, #a7f3d0 100%);
-  color: #1e293b;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #bbf7d0 100%);
+  color: #292524;
 }
 
 /* Light theme overrides for glass cards and text */

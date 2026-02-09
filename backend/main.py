@@ -686,11 +686,18 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     "type": "player_disconnected",
                     "data": {"player_id": player_id, "name": room.players[player_id].name}
                 })
-                await send_room_state(room)
-                save_room_to_redis(room)
             elif player_id in room.spectators:
                 room.spectators[player_id].connected = False
                 room.update_disconnect_timer()
+
+            # If no one is online, close the room immediately
+            if room.all_offline():
+                for pid in list(room.players) + list(room.spectators):
+                    player_rooms.pop(pid, None)
+                    await state_store.remove_player_room(pid)
+                game_manager.remove_room(room.id)
+                await delete_room_from_redis(room.id)
+            else:
                 await send_room_state(room)
                 save_room_to_redis(room)
 

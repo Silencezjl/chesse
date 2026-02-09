@@ -47,12 +47,22 @@ class Room:
 
     def update_disconnect_timer(self):
         """Update the all-disconnected timer."""
-        any_connected = any(p.connected for p in self.players.values())
-        if not any_connected and self.players:
+        any_connected = (
+            any(p.connected for p in self.players.values()) or
+            any(s.connected for s in self.spectators.values())
+        )
+        if not any_connected and (self.players or self.spectators):
             if self.all_disconnected_since is None:
                 self.all_disconnected_since = time.time()
         else:
             self.all_disconnected_since = None
+
+    def all_offline(self) -> bool:
+        """Check if no one is connected in this room (players + spectators)."""
+        if not self.players and not self.spectators:
+            return True
+        return not any(p.connected for p in self.players.values()) and \
+               not any(s.connected for s in self.spectators.values())
 
     def is_stale(self, timeout: float = 900) -> bool:
         """Check if room should be dissolved (all disconnected for timeout seconds)."""
