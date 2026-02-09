@@ -16,32 +16,48 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="奶酪大盗 - Cheese Thief")
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+import re
+from urllib.parse import unquote
 
 
-class PermissiveCORSMiddleware(BaseHTTPMiddleware):
-    """Custom CORS middleware that does NOT block WebSocket connections.
+class WebSocketPathFixMiddleware:
+    """Raw ASGI middleware that rewrites malformed WebSocket paths.
 
-    Starlette's built-in CORSMiddleware checks the Origin header on WebSocket
-    handshakes and returns 403 when the origin doesn't match.  Since we serve
-    the frontend from the same origin, CORS is irrelevant for WebSocket, so we
-    skip the check entirely for ws/wss and only apply standard CORS headers to
-    normal HTTP responses.
+    Some browsers (Safari, WeChat built-in browser) send the full WebSocket URL
+    as the request path, e.g. ``ws%3A//host/ws/player_id`` instead of ``/ws/player_id``.
+    This middleware detects that pattern and rewrites the path before it reaches
+    the router, preventing a 403 / 404.
     """
 
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        if not isinstance(response, Response):
-            return response
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
+    _FULL_URL_RE = re.compile(r'^wss?%3A//[^/]+(/.*)$', re.IGNORECASE)
 
+    def __init__(self, app):
+        self.app = app
 
-app.add_middleware(PermissiveCORSMiddleware)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            raw_path = scope.get("path", "")
+            m = self._FULL_URL_RE.match(raw_path)
+            if m:
+                scope["path"] = unquote(m.group(1))
+                # Also fix raw_path bytes if present
+                if "raw_path" in scope:
+                    scope["raw_path"] = scope["path"].encode("utf-8")
+
+        # For HTTP requests, add CORS headers via a simple wrapper
+        if scope["type"] == "http":
+            async def send_with_cors(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append((b"access-control-allow-origin", b"*"))
+                    headers.append((b"access-control-allow-methods", b"*"))
+                    headers.append((b"access-control-allow-headers", b"*"))
+                    message["headers"] = headers
+                await send(message)
+            await self.app(scope, receive, send_with_cors)
+        else:
+            await self.app(scope, receive, send)
+
 
 game_manager = GameManager()
 state_store = StateStore()
@@ -689,3 +705,6 @@ if os.path.exists(frontend_dir):
             os.path.join(frontend_dir, "index.html"),
             headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
         )
+
+# Wrap the FastAPI app with the path-fix middleware as the ASGI entry point
+asgi_app = WebSocketPathFixMiddleware(app)
