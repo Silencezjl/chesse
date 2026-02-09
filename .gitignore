@@ -4,7 +4,8 @@ frontend/node_modules/
 
 # Build output
 frontend/dist/
-
+*.tar
+*.tar.gz
 # Python
 __pycache__/
 *.pyc
