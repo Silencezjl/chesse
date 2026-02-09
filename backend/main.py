@@ -685,4 +685,7 @@ if os.path.exists(frontend_dir):
         file_path = os.path.join(frontend_dir, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(frontend_dir, "index.html"))
+        return FileResponse(
+            os.path.join(frontend_dir, "index.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
+        )
