@@ -134,7 +134,10 @@ export default function Room({ ws }) {
   if (!roomState) return null;
 
   const { room_id, phase, players, player_count, min_players, max_players, creator_id } = roomState;
+  const isSpectator = !!roomState.is_spectator;
   const me = players[playerId];
+  const spectators = roomState.spectators || {};
+  const spectatorList = Object.values(spectators);
   const playerOrder = roomState.player_order || [];
   const playerList = playerOrder.length > 0
     ? playerOrder.filter(id => players[id]).map(id => players[id])
@@ -236,7 +239,7 @@ export default function Room({ ws }) {
             {phase === 'voting' && '🗳️ 投票'}
             {phase === 'result' && '🏆 结果'}
           </div>
-          {(phase === 'waiting' || phase === 'result') && (
+          {(phase === 'waiting' || isSpectator) && (
             <button onClick={handleLeave} className="p-2 hover:bg-white/10 rounded-lg transition text-white/50 hover:text-red-400">
               <LogOut size={18} />
             </button>
@@ -304,8 +307,19 @@ export default function Room({ ws }) {
         </div>
       )}
 
+      {/* Spectator Banner */}
+      {isSpectator && (
+        <div className="glass-card p-4 border-purple-500/30 text-center">
+          <div className="text-3xl mb-2">👀</div>
+          <div className="text-lg font-bold text-purple-300">你是观众</div>
+          <div className="text-sm text-white/60">
+            {phase === 'waiting' ? '等待下一局开始后你将成为正式玩家' : '你可以看到所有玩家的信息'}
+          </div>
+        </div>
+      )}
+
       {/* Game Info Banner */}
-      {(phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
+      {!isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
         <div className={`glass-card p-4 ${
           (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : 'border-blue-500/30'
         }`}>
@@ -505,9 +519,26 @@ export default function Room({ ws }) {
         </div>
       )}
 
+      {/* Spectator List */}
+      {spectatorList.length > 0 && (
+        <div className="glass-card p-3">
+          <div className="text-xs text-white/40 mb-1 flex items-center gap-1">👀 观众 ({spectatorList.length})</div>
+          <div className="flex flex-wrap gap-2">
+            {spectatorList.map(s => (
+              <span key={s.id} className={`text-xs px-2 py-1 rounded-full bg-white/10 ${!s.connected ? 'opacity-40' : ''}`}>
+                {s.avatar} {s.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
-        {phase === 'waiting' && (
+        {isSpectator && phase !== 'waiting' && (
+          <span className="text-sm text-white/40">👀 观战中，等待本局结束...</span>
+        )}
+        {phase === 'waiting' && !isSpectator && (
           <>
             <button
               onClick={handleReady}
@@ -522,7 +553,7 @@ export default function Room({ ws }) {
           </>
         )}
 
-        {phase === 'night' && (() => {
+        {!isSpectator && phase === 'night' && (() => {
           const canEnd = gameInfo?.can_end_night;
           const iDone = gameInfo?.i_night_done;
           const btnDisabled = iDone || !canEnd;
@@ -548,7 +579,7 @@ export default function Room({ ws }) {
           );
         })()}
 
-        {phase === 'day' && (
+        {!isSpectator && phase === 'day' && (
           <>
             <button
               onClick={handleRequestVote}
@@ -565,7 +596,7 @@ export default function Room({ ws }) {
           </>
         )}
 
-        {phase === 'voting' && (
+        {!isSpectator && phase === 'voting' && (
           <div className="text-sm text-white/50">
             🗳️ 投票中 ({roomState.voted_count || 0}/{roomState.total_voters || 0})
           </div>

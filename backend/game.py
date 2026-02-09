@@ -43,6 +43,7 @@ class Room:
         self.swap_info: Optional[dict] = None     # 鼠小弟 swap info {pid1, pid2, dice1_orig, dice2_orig}
         self.drunk_accomplice_id: Optional[str] = None  # who drunk mouse chose as accomplice
         self.thief_raw_accomplice_id: Optional[str] = None  # who thief initially chose (before resolution)
+        self.spectators: dict[str, Player] = {}  # players watching the game (joined mid-game)
 
     def update_disconnect_timer(self):
         """Update the all-disconnected timer."""
@@ -93,13 +94,29 @@ class Room:
         self.players[player.id] = player
         return True
 
+    def add_spectator(self, player: Player):
+        """Add a player as spectator (joined mid-game)."""
+        self.spectators[player.id] = player
+
+    def remove_spectator(self, player_id: str):
+        """Remove a spectator. Returns True if room should be deleted."""
+        self.spectators.pop(player_id, None)
+        if len(self.players) == 0 and len(self.spectators) == 0:
+            return True
+        return False
+
     def remove_player(self, player_id: str):
         if player_id in self.players:
             del self.players[player_id]
-        if len(self.players) == 0:
+        elif player_id in self.spectators:
+            del self.spectators[player_id]
+        if len(self.players) == 0 and len(self.spectators) == 0:
             return True  # room should be deleted
-        if self.creator_id == player_id and self.players:
-            self.creator_id = next(iter(self.players))
+        if self.creator_id == player_id:
+            if self.players:
+                self.creator_id = next(iter(self.players))
+            elif self.spectators:
+                self.creator_id = next(iter(self.spectators))
         return False
 
     def set_ready(self, player_id: str, ready: bool):
@@ -752,20 +769,23 @@ class Room:
                 if player.role == Role.THIEF:
                     entry["actions"].append("🧀 偷走了奶酪")
                     if self.thief_raw_accomplice_id:
-                        raw_acc = self.players[self.thief_raw_accomplice_id]
-                        entry["actions"].append(f"🤝 选择了 {raw_acc.name} 作为共犯")
+                        raw_acc = self.players.get(self.thief_raw_accomplice_id)
+                        if raw_acc:
+                            entry["actions"].append(f"🤝 选择了 {raw_acc.name} 作为共犯")
                         # Thief chose drunk mouse
                         if self.thief_raw_accomplice_id == self.outsider_id and self.outsider_type == "drunk":
                             if self.accomplice_id:
-                                real_acc = self.players[self.accomplice_id]
-                                entry["actions"].append(f"🍺 实际共犯被酒鬼鼠转移给了 {real_acc.name}")
+                                real_acc = self.players.get(self.accomplice_id)
+                                if real_acc:
+                                    entry["actions"].append(f"🍺 实际共犯被酒鬼鼠转移给了 {real_acc.name}")
                             elif self.drunk_accomplice_id == self.thief_id:
                                 entry["actions"].append("🍺↔️ 酒鬼鼠也选了你→互选导致本局没有共犯！")
                 elif player.outsider == "drunk":
                     entry["actions"].append("🍺 以为自己是大盗，全程闭眼睡觉")
                     if self.drunk_accomplice_id:
-                        drunk_acc = self.players[self.drunk_accomplice_id]
-                        entry["actions"].append(f"🤝 选择了 {drunk_acc.name} 作为“共犯”")
+                        drunk_acc = self.players.get(self.drunk_accomplice_id)
+                        if drunk_acc:
+                            entry["actions"].append(f"🤝 选择了 {drunk_acc.name} 作为\u201c共犯\u201d")
                         if self.thief_raw_accomplice_id == self.outsider_id:
                             # Drunk was picked by thief, check if mutual selection
                             if self.drunk_accomplice_id == self.thief_id:
@@ -775,11 +795,12 @@ class Room:
                         else:
                             entry["actions"].append("❌ 未被真大盗选中，共犯选择未生效")
                 elif player.is_accomplice:
-                    thief = self.players[self.thief_id]
-                    if self.thief_raw_accomplice_id == self.outsider_id:
-                        entry["actions"].append(f"🤝 被🍺酒鬼鼠间接选为共犯（真大盗: {thief.name}）")
-                    else:
-                        entry["actions"].append(f"🤝 被 {thief.name} 选为共犯")
+                    thief = self.players.get(self.thief_id)
+                    if thief:
+                        if self.thief_raw_accomplice_id == self.outsider_id:
+                            entry["actions"].append(f"🤝 被🍺酒鬼鼠间接选为共犯（真大盗: {thief.name}）")
+                        else:
+                            entry["actions"].append(f"🤝 被 {thief.name} 选为共犯")
                 else:
                     same_group = night.get("same_group", [])
                     if same_group:
@@ -900,6 +921,12 @@ class Room:
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
+        # Move spectators into players (up to max_players)
+        for sid, sp in list(self.spectators.items()):
+            if len(self.players) < self.max_players:
+                self.players[sid] = sp
+                del self.spectators[sid]
+        self.spectators.clear()
         for p in self.players.values():
             p.reset_game_state()
 
@@ -941,6 +968,8 @@ class Room:
             "thief_raw_accomplice_id": self.thief_raw_accomplice_id,
             # Players
             "players": {pid: p.serialize() for pid, p in self.players.items()},
+            # Spectators
+            "spectators": {sid: s.serialize() for sid, s in self.spectators.items()},
         }
 
     @classmethod
@@ -981,14 +1010,23 @@ class Room:
         # Players
         for pid, pdata in data.get("players", {}).items():
             room.players[pid] = Player.deserialize(pdata)
+        # Spectators
+        for sid, sdata in data.get("spectators", {}).items():
+            room.spectators[sid] = Player.deserialize(sdata)
         return room
 
     def get_room_state(self, for_player_id: str = None) -> dict:
+        is_spectator = for_player_id and for_player_id in self.spectators
         players_data = {}
         for pid, p in self.players.items():
             is_self = (pid == for_player_id)
-            reveal = (self.phase == GamePhase.RESULT)
+            reveal = (self.phase == GamePhase.RESULT) or is_spectator
             players_data[pid] = p.to_dict(reveal=reveal, is_self=is_self)
+
+        # Spectator list for display
+        spectators_data = {}
+        for sid, sp in self.spectators.items():
+            spectators_data[sid] = {"id": sid, "name": sp.name, "avatar": sp.avatar, "connected": sp.connected}
 
         data = {
             "room_id": self.id,
@@ -1002,7 +1040,24 @@ class Room:
             "thief_see_all_dice": self.thief_see_all_dice,
             "max_dice": self.max_dice,
             "outsiders": self._outsider_settings_list(),
+            "spectators": spectators_data,
         }
+
+        if is_spectator:
+            data["is_spectator"] = True
+            # Spectators see result-like info during active game
+            if self.phase in (GamePhase.NIGHT, GamePhase.DAY, GamePhase.VOTING):
+                data["vote_results"] = self.vote_results
+                data["thief_id"] = self.thief_id
+                data["accomplice_id"] = self.accomplice_id
+            if self.phase == GamePhase.RESULT:
+                data["vote_results"] = self.vote_results
+                data["voted_player_id"] = self.voted_player_id
+                data["winner"] = self.winner
+                data["thief_id"] = self.thief_id
+                data["accomplice_id"] = self.accomplice_id
+                data["action_log"] = self.build_action_log()
+            return data
 
         # Include personalized game info for all active game phases (Bug3: survives refresh)
         if for_player_id and self.phase != GamePhase.WAITING:
@@ -1082,7 +1137,7 @@ class GameManager:
 
     def find_player_room(self, player_id: str) -> Optional[Room]:
         for room in self.rooms.values():
-            if player_id in room.players:
+            if player_id in room.players or player_id in room.spectators:
                 return room
         return None
 

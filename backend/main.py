@@ -126,7 +126,7 @@ async def send_to_player(player_id: str, message: dict):
 async def broadcast_to_room(room: Room, message: dict, exclude: str = None):
     tasks = [
         send_to_player(pid, message)
-        for pid in room.players if pid != exclude
+        for pid in list(room.players) + list(room.spectators) if pid != exclude
     ]
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -137,6 +137,9 @@ async def send_room_state(room: Room):
     for pid in room.players:
         state = room.get_room_state(for_player_id=pid)
         tasks.append(send_to_player(pid, {"type": "room_state", "data": state}))
+    for sid in room.spectators:
+        state = room.get_room_state(for_player_id=sid)
+        tasks.append(send_to_player(sid, {"type": "room_state", "data": state}))
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     # Fire-and-forget Redis save (non-blocking)
@@ -191,24 +194,41 @@ async def handle_join_room(ws: WebSocket, player_id: str, data: dict):
         return
 
     if player_id in room.players:
-        # Reconnection
+        # Reconnection (active player)
         room.players[player_id].connected = True
         player_rooms[player_id] = room.id
         await state_store.set_player_room(player_id, room.id)
         await send_room_state(room)
         return
 
+    if player_id in room.spectators:
+        # Reconnection (spectator)
+        room.spectators[player_id].connected = True
+        player_rooms[player_id] = room.id
+        await state_store.set_player_room(player_id, room.id)
+        await send_room_state(room)
+        return
+
+    name = data.get("name", "")
+    avatar = data.get("avatar", "")
+    player = Player(player_id, name, avatar)
+
     if room.phase != GamePhase.WAITING:
-        await ws.send_json({"type": "error", "data": {"message": "游戏已经开始，无法加入"}})
+        # Game in progress: join as spectator
+        room.add_spectator(player)
+        player_rooms[player_id] = room.id
+        await state_store.set_player_room(player_id, room.id)
+        await broadcast_to_room(room, {
+            "type": "player_joined",
+            "data": {"player_id": player_id, "name": player.name, "avatar": player.avatar, "is_spectator": True}
+        }, exclude=player_id)
+        await send_room_state(room)
         return
 
     if len(room.players) >= room.max_players:
         await ws.send_json({"type": "error", "data": {"message": "房间已满"}})
         return
 
-    name = data.get("name", "")
-    avatar = data.get("avatar", "")
-    player = Player(player_id, name, avatar)
     room.add_player(player)
     player_rooms[player_id] = room.id
     await state_store.set_player_room(player_id, room.id)
@@ -468,8 +488,10 @@ async def handle_leave_room(ws: WebSocket, player_id: str, data: dict):
     if not room:
         return
 
-    # Prevent leaving during active game
-    if room.phase in (GamePhase.NIGHT, GamePhase.DAY, GamePhase.VOTING):
+    is_spectator = player_id in room.spectators
+
+    # Spectators can leave anytime; players can only leave during WAITING
+    if not is_spectator and room.phase != GamePhase.WAITING:
         await ws.send_json({"type": "error", "data": {"message": "游戏进行中无法退出房间"}})
         return
 
@@ -511,13 +533,18 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
         return
 
     room = game_manager.get_room(room_id)
-    if not room or player_id not in room.players:
+    if not room or (player_id not in room.players and player_id not in room.spectators):
         # Room gone or player not in it
         await ws.send_json({"type": "left_room", "data": {}})
         return
 
-    # Reconnect the player
-    room.players[player_id].connected = True
+    # Reconnect the player or spectator
+    if player_id in room.players:
+        room.players[player_id].connected = True
+        p_name = room.players[player_id].name
+    else:
+        room.spectators[player_id].connected = True
+        p_name = room.spectators[player_id].name
     room.update_disconnect_timer()
     player_rooms[player_id] = room.id
     await state_store.set_player_room(player_id, room.id)
@@ -528,7 +555,7 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
     # Notify others
     await broadcast_to_room(room, {
         "type": "player_reconnected",
-        "data": {"player_id": player_id, "name": room.players[player_id].name}
+        "data": {"player_id": player_id, "name": p_name}
     }, exclude=player_id)
 
     # Check if all votes are now in
@@ -616,6 +643,10 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     "data": result
                 })
                 await send_room_state(room)
+        elif room and player_id in room.spectators:
+            room.spectators[player_id].connected = True
+            room.update_disconnect_timer()
+            await send_room_state(room)
 
     # Tell client their player_id and whether they have an active room
     connected_data = {"player_id": player_id}
@@ -647,16 +678,21 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
     except WebSocketDisconnect:
         connections.pop(player_id, None)
         room = game_manager.find_player_room(player_id)
-        if room and player_id in room.players:
-            room.players[player_id].connected = False
-            room.update_disconnect_timer()
-            await broadcast_to_room(room, {
-                "type": "player_disconnected",
-                "data": {"player_id": player_id, "name": room.players[player_id].name}
-            })
-            await send_room_state(room)
-            # Extra save on disconnect to persist the disconnected state
-            save_room_to_redis(room)
+        if room:
+            if player_id in room.players:
+                room.players[player_id].connected = False
+                room.update_disconnect_timer()
+                await broadcast_to_room(room, {
+                    "type": "player_disconnected",
+                    "data": {"player_id": player_id, "name": room.players[player_id].name}
+                })
+                await send_room_state(room)
+                save_room_to_redis(room)
+            elif player_id in room.spectators:
+                room.spectators[player_id].connected = False
+                room.update_disconnect_timer()
+                await send_room_state(room)
+                save_room_to_redis(room)
 
 
 # Serve frontend static files
