@@ -315,7 +315,7 @@ export default function Room({ ws }) {
             </div>
             <div className="flex-1">
               <div className="font-bold text-lg">
-                {isMeThief || isMeFakeThief ? '你是奶酪大盗！' : isMeAccomplice ? '你是共犯！' : '你是瞌睡鼠'}
+                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : '你是瞌睡鼠'}
               </div>
               <div className="text-sm text-white/60">
                 你的骰子: <span className="text-cheese-400 font-bold">{gameInfo.dice}</span> 点
@@ -544,9 +544,6 @@ export default function Room({ ws }) {
                   <Check size={16} /> {iDone ? '已结束，等待其他人...' : '结束夜晚行动'}
                 </span>
               </button>
-              <span className="text-xs text-white/40">
-                已结束: {doneCount}/{totalCount}
-              </span>
             </>
           );
         })()}
