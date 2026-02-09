@@ -18,7 +18,7 @@ services:
     build: .
     container_name: cheese-thief
     ports:
-      - "80:80"
+      - "80:8000"
     restart: unless-stopped
     working_dir: /app/backend
     depends_on:
