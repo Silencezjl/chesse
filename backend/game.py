@@ -1143,11 +1143,10 @@ class GameManager:
         return None
 
     def list_rooms(self) -> list[dict]:
-        """Return list of joinable rooms (waiting phase, not full)."""
+        """Return list of all active rooms (including in-progress games for spectating)."""
         result = []
         for room in self.rooms.values():
-            if room.phase == GamePhase.WAITING and len(room.players) < room.max_players:
-                result.append(room.to_list_item())
+            result.append(room.to_list_item())
         return result
 
     def cleanup_stale_rooms(self) -> list[str]:

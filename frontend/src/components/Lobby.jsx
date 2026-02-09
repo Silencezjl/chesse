@@ -336,35 +336,61 @@ export default function Lobby({ ws }) {
             {ws.roomList.length === 0 ? (
               <div className="text-center py-8 text-white/30">
                 <Users size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">暂无可加入的房间</p>
+                <p className="text-sm">暂无房间</p>
                 <p className="text-xs mt-1">试试创建一个新房间吧！</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {ws.roomList.map((room) => (
-                  <div
-                    key={room.room_id}
-                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition"
-                  >
-                    <div>
-                      <div className="text-sm font-medium">{room.creator_name} 的房间</div>
-                      <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5">
-                        <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
-                        <span>🎲 {room.max_dice}面</span>
-                        <span>{room.thief_see_all_dice ? '👁 大盗可见点数' : '🙈 大盗不可见点数'}</span>
-                        {room.outsiders && room.outsiders.length > 0 && (
-                          <span>🌟 {room.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleJoinRoom(room.room_id)}
-                      className="text-xs px-3 py-1.5 bg-cheese-500/80 hover:bg-cheese-500 text-white rounded-lg transition flex items-center gap-1"
+                {ws.roomList.map((room) => {
+                  const isWaiting = room.phase === 'waiting';
+                  const isFull = room.player_count >= room.max_players;
+                  const phaseLabels = {
+                    waiting: { text: '等待中', color: 'bg-green-500/20 text-green-300' },
+                    night: { text: '夜晚', color: 'bg-indigo-500/20 text-indigo-300' },
+                    day: { text: '白天', color: 'bg-yellow-500/20 text-yellow-300' },
+                    voting: { text: '投票中', color: 'bg-red-500/20 text-red-300' },
+                    result: { text: '结算中', color: 'bg-purple-500/20 text-purple-300' },
+                  };
+                  const phaseInfo = phaseLabels[room.phase] || { text: room.phase, color: 'bg-white/10 text-white/60' };
+                  return (
+                    <div
+                      key={room.room_id}
+                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition"
                     >
-                      <LogIn size={12} /> 加入
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium flex items-center gap-2">
+                          {room.creator_name} 的房间
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${phaseInfo.color}`}>{phaseInfo.text}</span>
+                        </div>
+                        <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span><Users size={10} className="inline" /> {room.connected_count}/{room.max_players} 在线</span>
+                          <span>🎲 {room.max_dice}面</span>
+                          <span>{room.thief_see_all_dice ? '👁 可见点数' : '🙈 不可见点数'}</span>
+                          {room.outsiders && room.outsiders.length > 0 && (
+                            <span>🌟 {room.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}</span>
+                          )}
+                        </div>
+                      </div>
+                      {isWaiting && !isFull ? (
+                        <button
+                          onClick={() => handleJoinRoom(room.room_id)}
+                          className="text-xs px-3 py-1.5 bg-cheese-500/80 hover:bg-cheese-500 text-white rounded-lg transition flex items-center gap-1 shrink-0 ml-2"
+                        >
+                          <LogIn size={12} /> 加入
+                        </button>
+                      ) : isWaiting && isFull ? (
+                        <span className="text-xs text-white/30 shrink-0 ml-2">已满</span>
+                      ) : (
+                        <button
+                          onClick={() => handleJoinRoom(room.room_id)}
+                          className="text-xs px-3 py-1.5 bg-purple-500/80 hover:bg-purple-500 text-white rounded-lg transition flex items-center gap-1 shrink-0 ml-2"
+                        >
+                          <Eye size={12} /> 观战
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

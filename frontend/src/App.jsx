@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import useWebSocket from './hooks/useWebSocket';
 import Lobby from './components/Lobby';
 import Room from './components/Room';
@@ -7,6 +7,21 @@ import Notifications from './components/Notifications';
 export default function App() {
   const ws = useWebSocket();
   const { roomState, notifications } = ws;
+
+  // Switch body background theme based on game phase
+  useEffect(() => {
+    const phase = roomState?.phase;
+    const themeMap = {
+      waiting: 'theme-dark',
+      night: 'theme-night',
+      day: 'theme-day',
+      voting: 'theme-day',
+      result: 'theme-result',
+    };
+    const theme = themeMap[phase] || 'theme-dark';
+    document.body.className = theme;
+    return () => { document.body.className = 'theme-dark'; };
+  }, [roomState?.phase]);
 
   return (
     <div className={`min-h-screen flex flex-col ${ws.screenShake ? 'animate-screen-shake' : ''}`}>
