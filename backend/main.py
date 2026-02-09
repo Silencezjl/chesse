@@ -20,7 +20,7 @@ app = FastAPI(title="奶酪大盗 - Cheese Thief")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
