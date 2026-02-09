@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="奶酪大盗 - Cheese Thief")
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
