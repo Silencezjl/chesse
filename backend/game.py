@@ -921,6 +921,7 @@ class Room:
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
+        self.player_order = []
         # Move spectators into players (up to max_players)
         for sid, sp in list(self.spectators.items()):
             if len(self.players) < self.max_players:
