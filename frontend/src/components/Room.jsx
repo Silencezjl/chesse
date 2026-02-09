@@ -44,7 +44,7 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
 
       {isMe && (
         <div className="absolute top-1 left-1 text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">
-          这是你
+          我
         </div>
       )}
       <div className="text-3xl md:text-4xl">{player.avatar}</div>
@@ -449,11 +449,13 @@ export default function Room({ ws }) {
               };
               const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
               const outsiderLabels = { ratatouille: '🍳 料理鼠王', trickster: '🧸 鼠小弟', drunk: '🍺 酒鬼鼠' };
+              const isMyEntry = entry.player_id === playerId;
               return (
-                <div key={entry.player_id} className={`border rounded-lg p-3 ${roleColors[entry.role] || roleColors.mouse}`}>
+                <div key={entry.player_id} className={`border rounded-lg p-3 relative ${roleColors[entry.role] || roleColors.mouse} ${isMyEntry ? 'ring-2 ring-cheese-400 bg-cheese-400/10' : ''}`}>
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-xl">{entry.avatar}</span>
                     <span className="font-medium">{entry.name}</span>
+                    {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
                     <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{roleLabels[entry.role] || entry.role}</span>
                     {entry.outsider_label && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{entry.outsider_label}</span>
