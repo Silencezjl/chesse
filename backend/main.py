@@ -59,12 +59,22 @@ async def delete_room_from_redis(room_id: str):
 
 
 async def cleanup_stale_rooms_task():
-    """Background task to clean up rooms where all players disconnected for 15+ minutes."""
+    """Background task to clean up empty/stale rooms every 10 seconds."""
     while True:
-        await asyncio.sleep(60)  # check every minute
+        await asyncio.sleep(10)
+        # Remove rooms where no one is online
+        empty_ids = [rid for rid, room in game_manager.rooms.items() if room.all_offline()]
+        for rid in empty_ids:
+            room = game_manager.rooms.get(rid)
+            if room:
+                for pid in list(room.players) + list(room.spectators):
+                    player_rooms.pop(pid, None)
+                    await state_store.remove_player_room(pid)
+            game_manager.remove_room(rid)
+            await delete_room_from_redis(rid)
+        # Also remove rooms disconnected for 15+ minutes (safety net)
         stale_ids = game_manager.cleanup_stale_rooms()
         for rid in stale_ids:
-            # Clean up player_rooms references
             to_remove = [pid for pid, r_id in player_rooms.items() if r_id == rid]
             for pid in to_remove:
                 player_rooms.pop(pid, None)

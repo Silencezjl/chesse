@@ -42,6 +42,11 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
         </div>
       )}
 
+      {isMe && (
+        <div className="absolute top-1 left-1 text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">
+          这是你
+        </div>
+      )}
       <div className="text-3xl md:text-4xl">{player.avatar}</div>
       <div className="text-sm font-medium truncate max-w-full flex items-center gap-1">
         {index != null && <span className="text-white/40">{index}.</span>}
@@ -49,8 +54,8 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
         {isCreator && <Crown size={12} className="text-cheese-400 flex-shrink-0" />}
       </div>
 
-      {/* Show role for self or in result phase */}
-      {player.role && (
+      {/* Show role & dice only in result phase */}
+      {phase === 'result' && player.role && (
         <div className={`text-xs px-2 py-0.5 rounded-full ${
           player.role === 'thief' ? 'bg-red-500/30 text-red-300' :
           player.role === 'accomplice' ? 'bg-yellow-500/30 text-yellow-300' :
@@ -60,8 +65,8 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
           {player.dice > 0 && ` ${player.dice}点`}
         </div>
       )}
-      {/* Show outsider tag in result phase */}
-      {player.outsider && (
+      {/* Show outsider tag only in result phase */}
+      {phase === 'result' && player.outsider && (
         <div className="text-xs px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-300">
           {OUTSIDER_LABELS[player.outsider] || player.outsider}
         </div>
