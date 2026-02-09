@@ -107,6 +107,84 @@ body.theme-result .btn-secondary {
   color: #1e293b;
 }
 
+/* Fix low-contrast colors on light themes */
+body.theme-day .text-cheese-400,
+body.theme-result .text-cheese-400,
+body.theme-day .text-cheese-300,
+body.theme-result .text-cheese-300 {
+  color: #b45309;
+}
+
+body.theme-day .text-yellow-300,
+body.theme-result .text-yellow-300 {
+  color: #a16207;
+}
+
+body.theme-day .text-yellow-400,
+body.theme-result .text-yellow-400 {
+  color: #a16207;
+}
+
+body.theme-day .text-red-300,
+body.theme-result .text-red-300 {
+  color: #dc2626;
+}
+
+body.theme-day .text-red-400,
+body.theme-result .text-red-400 {
+  color: #dc2626;
+}
+
+body.theme-day .text-blue-300,
+body.theme-result .text-blue-300 {
+  color: #2563eb;
+}
+
+body.theme-day .text-green-300,
+body.theme-result .text-green-300 {
+  color: #16a34a;
+}
+
+body.theme-day .text-purple-300,
+body.theme-result .text-purple-300 {
+  color: #7c3aed;
+}
+
+body.theme-day .text-indigo-300,
+body.theme-result .text-indigo-300 {
+  color: #4f46e5;
+}
+
+body.theme-day .bg-yellow-500\/10,
+body.theme-result .bg-yellow-500\/10 {
+  background: rgba(161, 98, 7, 0.12);
+}
+
+body.theme-day .bg-yellow-500\/30,
+body.theme-result .bg-yellow-500\/30 {
+  background: rgba(161, 98, 7, 0.18);
+}
+
+body.theme-day .bg-red-500\/30,
+body.theme-result .bg-red-500\/30 {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+body.theme-day .bg-blue-500\/30,
+body.theme-result .bg-blue-500\/30 {
+  background: rgba(37, 99, 235, 0.15);
+}
+
+body.theme-day .bg-purple-500\/30,
+body.theme-result .bg-purple-500\/30 {
+  background: rgba(124, 58, 237, 0.12);
+}
+
+body.theme-day .bg-purple-500\/20,
+body.theme-result .bg-purple-500\/20 {
+  background: rgba(124, 58, 237, 0.1);
+}
+
 ::-webkit-scrollbar {
   width: 6px;
 }

@@ -27,7 +27,7 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
 
   return (
     <div className={`glass-card p-3 md:p-4 flex flex-col items-center gap-2 transition-all relative
-      ${isMe ? 'ring-2 ring-cheese-400' : ''} 
+      ${isMe ? 'bg-cheese-400/20 ring-2 ring-cheese-400 shadow-lg shadow-cheese-400/10' : ''} 
       ${isDisconnected ? 'opacity-40' : ''}
       ${myVote === player.id ? 'ring-2 ring-red-400' : ''}
     `}>
@@ -57,20 +57,13 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
           'bg-blue-500/30 text-blue-300'
         }`}>
           {roleLabel[player.role] || player.role}
+          {player.dice > 0 && ` ${player.dice}点`}
         </div>
       )}
       {/* Show outsider tag in result phase */}
       {player.outsider && (
         <div className="text-xs px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-300">
           {OUTSIDER_LABELS[player.outsider] || player.outsider}
-        </div>
-      )}
-
-      {/* Show dice for self or in result phase */}
-      {player.dice > 0 && (
-        <div className="flex items-center gap-1 text-cheese-300">
-          <DiceIcon value={player.dice} size={16} />
-          <span className="text-xs">{player.dice}点</span>
         </div>
       )}
 
@@ -229,9 +222,9 @@ export default function Room({ ws }) {
           <div className={`px-3 py-1 rounded-full text-sm font-medium ${
             phase === 'waiting' ? 'bg-blue-500/30 text-blue-300' :
             phase === 'night' ? 'bg-indigo-500/30 text-indigo-300' :
-            phase === 'day' ? 'bg-yellow-500/30 text-yellow-300' :
+            phase === 'day' ? 'bg-amber-600/30 text-amber-800' :
             phase === 'voting' ? 'bg-red-500/30 text-red-300' :
-            'bg-green-500/30 text-green-300'
+            'bg-emerald-600/30 text-emerald-800'
           }`}>
             {phase === 'waiting' && '⏳ 等待中'}
             {phase === 'night' && '🌙 夜晚'}
@@ -331,8 +324,8 @@ export default function Room({ ws }) {
               <div className="font-bold text-lg">
                 {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : '你是瞌睡鼠'}
               </div>
-              <div className="text-sm text-white/60">
-                你的骰子: <span className="text-cheese-400 font-bold">{gameInfo.dice}</span> 点
+              <div className="text-sm text-white/60 flex items-center gap-2">
+                你的骰子: <span className="text-cheese-400 font-bold flex items-center gap-1"><DiceIcon value={gameInfo.dice} size={18} /> {gameInfo.dice}点</span>
               </div>
 
               {/* Night message from server (includes group/cheese/thief info) */}
