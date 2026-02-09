@@ -1,9 +1,7 @@
-version: "3.8"
-
 services:
   redis:
     image: docker.m.daocloud.io/redis:7-alpine
-    platform: linux/arm64
+    pull_policy: never
     container_name: cheese-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
@@ -17,7 +15,7 @@ services:
 
   cheese-thief:
     image: chesse-cheese-thief:arm64
-    platform: linux/arm64
+    pull_policy: never
     container_name: cheese-thief
     ports:
       - "80:8000"
