@@ -76,7 +76,11 @@ class Player:
             "connected": self.connected,
         }
         if is_self or reveal:
-            data["role"] = self.role
+            # Drunk mouse sees themselves as thief (except in reveal phase)
+            if is_self and not reveal and self.outsider == "drunk":
+                data["role"] = Role.THIEF
+            else:
+                data["role"] = self.role
             data["dice"] = self.dice if reveal else self.display_dice
             data["is_accomplice"] = self.is_accomplice
             if reveal and self.outsider:

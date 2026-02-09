@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   redis:
     image: docker.m.daocloud.io/redis:7-alpine
