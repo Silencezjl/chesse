@@ -4,7 +4,6 @@ import uuid
 import logging
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
@@ -17,13 +16,32 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="奶酪大盗 - Cheese Thief")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+
+class PermissiveCORSMiddleware(BaseHTTPMiddleware):
+    """Custom CORS middleware that does NOT block WebSocket connections.
+
+    Starlette's built-in CORSMiddleware checks the Origin header on WebSocket
+    handshakes and returns 403 when the origin doesn't match.  Since we serve
+    the frontend from the same origin, CORS is irrelevant for WebSocket, so we
+    skip the check entirely for ws/wss and only apply standard CORS headers to
+    normal HTTP responses.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if not isinstance(response, Response):
+            return response
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
+
+app.add_middleware(PermissiveCORSMiddleware)
 
 game_manager = GameManager()
 state_store = StateStore()
