@@ -64,7 +64,6 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
         <div className={`text-xs px-2 py-0.5 rounded-full ${
           player.role === 'thief' ? 'bg-red-500/30 text-red-300' :
           player.role === 'accomplice' ? 'bg-yellow-500/30 text-yellow-300' :
-          player.role === 'dodobird' ? 'bg-teal-500/30 text-teal-300' :
           'bg-blue-500/30 text-blue-300'
         }`}>
           {roleLabel[player.role] || player.role}
@@ -216,14 +215,17 @@ export default function Room({ ws }) {
   };
 
   const handleDodobirdAccomplice = (targetId) => {
-    // Check if target is in same group as thief or self
-    const sameGroup = gameInfo?.same_group || [];
-    const sameGroupIds = sameGroup.map(m => m.id);
+    // Check if target wakes at the same time as thief or dodobird using all_dice
+    const allDice = gameInfo?.all_dice || {};
     const thiefId = gameInfo?.thief_id;
+    const myDice = allDice[playerId];
+    const targetDice = allDice[targetId];
+    const thiefDice = thiefId ? allDice[thiefId] : null;
     const warnings = [];
-    if (thiefId && sameGroupIds.includes(targetId) && sameGroupIds.includes(thiefId)) {
+    if (thiefDice != null && targetDice != null && targetDice === thiefDice) {
       warnings.push('该玩家和奶酪大盗同时睁眼');
-    } else if (sameGroupIds.includes(targetId)) {
+    }
+    if (myDice != null && targetDice != null && targetDice === myDice) {
       warnings.push('该玩家和你同时睁眼');
     }
     if (warnings.length > 0 && !window.confirm(`⚠️ ${warnings.join('，')}，确认选择吗？`)) {

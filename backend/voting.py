@@ -31,11 +31,14 @@ class VotingMixin:
         # Cannot change vote once cast
         if voter.voted_for is not None:
             return False, "你已经投过票了，不能改票"
-        # Accomplice cannot vote for thief (real or fake accomplice)
+        # Real accomplice cannot vote for real thief
         is_fake_acc = (self.dodobird_accomplice_id
                        and voter_id == self.dodobird_accomplice_id
                        and not voter.is_accomplice)
-        if (voter.is_accomplice or is_fake_acc) and target_id == self.thief_id:
+        if voter.is_accomplice and target_id == self.thief_id:
+            return False, "作为共犯，你不能给奶酪大盗投票"
+        # Fake accomplice cannot vote for dodobird (who they think is the thief)
+        if is_fake_acc and target_id == self.dodobird_id:
             return False, "作为共犯，你不能给奶酪大盗投票"
         # Dodobird and thief can only vote for each other
         if self.dodobird_id:

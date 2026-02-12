@@ -109,10 +109,17 @@ class RoomStateMixin:
                     my_info["can_assassinate"] = not self.assassinate_used
                     if self.jerry_id:  # Tom doesn't know who Jerry is
                         pass  # intentionally don't reveal jerry_id
+                if self.phase == GamePhase.NIGHT:
+                    night = self.get_player_night_info(for_player_id)
+                    my_info.update(night)
+                    my_info["can_end_night"] = self.can_end_night(for_player_id)
+                    my_info["i_night_done"] = for_player_id in self.night_actions_done
                 # Fake accomplice (chosen by dodobird) thinks they're accomplice
+                # Only show after BOTH thief and dodobird have chosen (deferred timing)
                 is_fake_acc = (self.dodobird_accomplice_id
                                and for_player_id == self.dodobird_accomplice_id
-                               and not player.is_accomplice)
+                               and not player.is_accomplice
+                               and self.thief_raw_accomplice_id is not None)
                 if is_fake_acc:
                     my_info["role"] = Role.ACCOMPLICE  # they think they are accomplice
                     my_info["is_accomplice"] = True  # they think they are
@@ -122,11 +129,6 @@ class RoomStateMixin:
                     my_info["thief_id"] = self.dodobird_id
                     my_info["thief_name"] = dodobird.name
                     my_info["thief_dice"] = dodobird.dice
-                if self.phase == GamePhase.NIGHT:
-                    night = self.get_player_night_info(for_player_id)
-                    my_info.update(night)
-                    my_info["can_end_night"] = self.can_end_night(for_player_id)
-                    my_info["i_night_done"] = for_player_id in self.night_actions_done
                 data["my_info"] = my_info
 
         if self.phase == GamePhase.NIGHT:
@@ -152,8 +154,10 @@ class RoomStateMixin:
                 is_fake_acc = (self.dodobird_accomplice_id
                                and for_player_id == self.dodobird_accomplice_id
                                and not p.is_accomplice)
-                if p and (p.is_accomplice or is_fake_acc):
+                if p and p.is_accomplice:
                     data["no_vote_target"] = self.thief_id
+                elif p and is_fake_acc:
+                    data["no_vote_target"] = self.dodobird_id
                 # Dodobird and thief can only vote for each other
                 if self.dodobird_id:
                     if for_player_id == self.dodobird_id:
