@@ -11,7 +11,7 @@ function DiceIcon({ value, size = 20 }) {
   return Icon ? <Icon size={size} /> : <span>{value}</span>;
 }
 
-function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, onAssassinate, myVote, canAccomplice, canDodobirdAccomplice, canAssassinate, noVoteTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
+function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, onAssassinate, myVote, canAccomplice, canDodobirdAccomplice, canAssassinate, noVoteTarget, voteOnlyTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
   const OUTSIDER_LABELS = {
     drunk: '🍺 酒鬼鼠',
     dodobird: '🐦 呆呆鸟',
@@ -26,8 +26,6 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
     thief: '🧀 奶酪大盗',
     mouse: '🐭 瞌睡鼠',
     accomplice: '🤝 共犯',
-    dodobird: '🐦 呆呆鸟',
-    jerry: '🐭 Jerry',
   };
 
   const isDisconnected = !player.connected;
@@ -116,29 +114,23 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
         </button>
       )}
 
-      {/* Assassinate button for Tom */}
-      {canAssassinate && !isMe && onAssassinate && player.id !== noVoteTarget && (
+      {/* Assassinate button for Tom (unified: works in any phase when canAssassinate, or in assassinate phase) */}
+      {((canAssassinate && phase !== 'assassinate') || (phase === 'assassinate' && isMeTom)) && !isMe && onAssassinate && player.id !== noVoteTarget && (
         <button
           onClick={() => onAssassinate(player.id)}
-          className="text-xs px-3 py-1 bg-red-600/60 text-white rounded-lg hover:bg-red-600/80 transition flex items-center gap-1"
-        >
-          🗡️ 刺杀
-        </button>
-      )}
-
-      {/* ASSASSINATE phase: only Tom can select */}
-      {phase === 'assassinate' && isMeTom && !isMe && player.id !== noVoteTarget && onAssassinate && (
-        <button
-          onClick={() => onAssassinate(player.id)}
-          className="text-xs px-3 py-1 bg-red-600/70 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-1 animate-pulse"
+          className={`text-xs px-3 py-1 text-white rounded-lg transition flex items-center gap-1 ${
+            phase === 'assassinate' ? 'bg-red-600/70 hover:bg-red-600 animate-pulse' : 'bg-red-600/60 hover:bg-red-600/80'
+          }`}
         >
           🗡️ 刺杀
         </button>
       )}
 
       {/* Voting: Vote button */}
-      {phase === 'voting' && !isMe && player.id !== noVoteTarget && (
-        myVote ? (
+      {phase === 'voting' && !isMe && (() => {
+        const blocked = player.id === noVoteTarget || (voteOnlyTarget && player.id !== voteOnlyTarget);
+        if (blocked) return <span className="text-xs text-white/30 py-1">不可投票</span>;
+        return myVote ? (
           myVote === player.id ? (
             <span className="text-xs py-1 px-3 rounded-lg bg-red-500 text-white flex items-center gap-1">
               <Vote size={12} /> 已投票
@@ -153,11 +145,8 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
               <Vote size={12} /> 投票
             </button>
           )
-        )
-      )}
-      {phase === 'voting' && !isMe && player.id === noVoteTarget && (
-        <span className="text-xs text-white/30 py-1">不可投票</span>
-      )}
+        );
+      })()}
 
       {/* Result: Vote count */}
       {phase === 'result' && player.vote_count > 0 && (
@@ -172,6 +161,25 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
 export default function Room({ ws }) {
   const { roomState, playerId, gameInfo, screenShake, send } = ws;
   const [copied, setCopied] = useState(false);
+  const [assassinateTarget, setAssassinateTarget] = useState(null);
+  const [countdown, setCountdown] = useState(null);
+
+  // Countdown timer for ASSASSINATE phase
+  useEffect(() => {
+    if (roomState?.phase === 'assassinate') {
+      setCountdown(30);
+      const timer = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) { clearInterval(timer); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setCountdown(null);
+      setAssassinateTarget(null);
+    }
+  }, [roomState?.phase]);
 
   if (!roomState) return null;
 
@@ -208,6 +216,19 @@ export default function Room({ ws }) {
   };
 
   const handleDodobirdAccomplice = (targetId) => {
+    // Check if target is in same group as thief or self
+    const sameGroup = gameInfo?.same_group || [];
+    const sameGroupIds = sameGroup.map(m => m.id);
+    const thiefId = gameInfo?.thief_id;
+    const warnings = [];
+    if (thiefId && sameGroupIds.includes(targetId) && sameGroupIds.includes(thiefId)) {
+      warnings.push('该玩家和奶酪大盗同时睁眼');
+    } else if (sameGroupIds.includes(targetId)) {
+      warnings.push('该玩家和你同时睁眼');
+    }
+    if (warnings.length > 0 && !window.confirm(`⚠️ ${warnings.join('，')}，确认选择吗？`)) {
+      return;
+    }
     send('dodobird_choose_accomplice', { target_id: targetId });
   };
 
@@ -232,9 +253,16 @@ export default function Room({ ws }) {
   };
 
   const handleAssassinate = (targetId) => {
-    if (window.confirm('确定要刺杀这名玩家吗？刺杀技能只能使用一次！')) {
-      send('assassinate', { target_id: targetId });
+    setAssassinateTarget(targetId);
+  };
+  const confirmAssassinate = () => {
+    if (assassinateTarget) {
+      send('assassinate', { target_id: assassinateTarget });
+      setAssassinateTarget(null);
     }
+  };
+  const cancelAssassinate = () => {
+    setAssassinateTarget(null);
   };
 
   const isMeDrunk = gameInfo?.is_drunk || gameInfo?.outsider_actual === 'drunk';
@@ -347,7 +375,7 @@ export default function Room({ ws }) {
                   onChange={(e) => send('update_room_settings', { outsider_drunk: e.target.checked })}
                   className="accent-cheese-400"
                 />
-                <span className="text-white/70">� 酒鬼鼠</span>
+                <span className="text-white/70">🍻 酒鬼鼠</span>
               </label>
               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
@@ -502,8 +530,8 @@ export default function Room({ ws }) {
             </div>
           </div>
 
-          {/* All dice overview: Thief, drunk mouse (fake thief), or Jerry */}
-          {(isMeThief || isMeFakeThief || isMeJerry) && gameInfo.all_dice && (
+          {/* All dice overview: Thief, drunk mouse (fake thief), Jerry, or Dodobird */}
+          {(isMeThief || isMeFakeThief || isMeJerry || isMeDodobird) && gameInfo.all_dice && (
             <div className="mt-3 p-3 bg-black/20 rounded-lg">
               <div className="text-xs text-white/50 mb-2">所有玩家骰子点数：</div>
               <div className="flex flex-wrap gap-2">
@@ -528,12 +556,17 @@ export default function Room({ ws }) {
         <div className="glass-card p-6 text-center border-red-700/30">
           <div className="text-5xl mb-3 animate-pulse">🗡️</div>
           <div className="text-2xl font-bold mb-2 text-red-400">刺杀阶段！</div>
+          {countdown != null && (
+            <div className={`text-4xl font-bold mb-3 tabular-nums ${countdown <= 10 ? 'text-red-500 animate-pulse' : 'text-white/80'}`}>
+              {countdown}s
+            </div>
+          )}
           <div className="text-white/60 mb-2">
             瞌睡鼠成功投票出了奶酪大盗！但 Tom（刺客）有 30 秒时间进行刺杀。
           </div>
           {isMeTom ? (
             <div className="text-lg text-red-300 font-bold animate-pulse">
-              🐱 你是 Tom！请在 30 秒内选择一名玩家刺杀，猜中 Jerry 即可逆转胜局！
+              🐱 你是 Tom！选择一名玩家刺杀，猜中 Jerry 即可逆转胜局！
             </div>
           ) : (
             <div className="text-sm text-white/50">
@@ -607,10 +640,8 @@ export default function Room({ ws }) {
                 thief: 'border-red-500/40 bg-red-500/10',
                 accomplice: 'border-yellow-500/40 bg-yellow-500/10',
                 mouse: 'border-blue-500/40 bg-blue-500/10',
-                dodobird: 'border-teal-500/40 bg-teal-500/10',
-                jerry: 'border-emerald-500/40 bg-emerald-500/10',
               };
-              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯', dodobird: '🐦 呆呆鸟', jerry: '🐭 Jerry' };
+              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
               const isMyEntry = entry.player_id === playerId;
               return (
                 <div key={entry.player_id} className={`border rounded-lg p-3 relative ${roleColors[entry.role] || roleColors.mouse} ${isMyEntry ? 'ring-2 ring-cheese-400 bg-cheese-400/10' : ''}`}>
@@ -678,6 +709,7 @@ export default function Room({ ws }) {
               excludeAccomplice={gameInfo?.dodobird_id}
               excludeDodobirdAccomplice={gameInfo?.thief_id}
               noVoteTarget={roomState.no_vote_target}
+              voteOnlyTarget={roomState.vote_only_target}
             />
           ))}
         </div>
@@ -693,6 +725,30 @@ export default function Room({ ws }) {
           </div>
         </div>
       )}
+
+      {/* Assassination Confirmation Modal */}
+      {assassinateTarget && (() => {
+        const target = players[assassinateTarget];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-fade-in" onClick={cancelAssassinate}>
+            <div className="glass-card p-8 max-w-sm text-center border-red-600/50 animate-fade-in" onClick={e => e.stopPropagation()}>
+              <div className="text-6xl mb-4">🗡️</div>
+              <div className="text-xl font-bold text-red-400 mb-2">确认刺杀</div>
+              <div className="text-4xl mb-3">{target?.avatar}</div>
+              <div className="text-lg font-medium text-white mb-4">{target?.name}</div>
+              <div className="text-sm text-white/50 mb-6">刺杀技能只能使用一次！<br/>若命中 Jerry，大盗阵营直接获胜。</div>
+              <div className="flex gap-3 justify-center">
+                <button onClick={cancelAssassinate} className="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition">
+                  取消
+                </button>
+                <button onClick={confirmAssassinate} className="px-6 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold transition animate-pulse">
+                  🗡️ 确认刺杀
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Spectator List */}
       {spectatorList.length > 0 && (

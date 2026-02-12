@@ -25,11 +25,17 @@ class ActionLogMixin:
             for pid in pids:
                 player = self.players[pid]
                 night = self.night_info.get(pid, {})
+                # Map dodobird/jerry to mouse for display; outsider label handles identity
+                display_role = player.role
+                if player.role == Role.DODOBIRD:
+                    display_role = Role.MOUSE
+                elif player.role == Role.JERRY:
+                    display_role = Role.MOUSE
                 entry = {
                     "player_id": pid,
                     "name": player.name,
                     "avatar": player.avatar,
-                    "role": player.role,
+                    "role": display_role,
                     "dice": player.dice,
                     "wake_dice": wake_dice[pid],
                     "actions": [],
@@ -37,10 +43,10 @@ class ActionLogMixin:
                 # Show outsider tag
                 if player.outsider:
                     outsider_labels = {
-                        "drunk": "� 酒鬼鼠",
+                        "drunk": "🍻 酒鬼鼠",
                         "dodobird": "🐦 呆呆鸟",
                         "tom": "🐱 Tom（刺客）",
-                        "jerry": "� Jerry（先知）",
+                        "jerry": "🐭 Jerry（先知）",
                     }
                     entry["outsider"] = player.outsider
                     entry["outsider_label"] = outsider_labels.get(player.outsider, player.outsider)
@@ -215,9 +221,9 @@ class ActionLogMixin:
             poison_target = self.players.get(self.poison_target_id)
             if poison_target and self.poison_fake_dice:
                 if self.poison_mode == "wrong_time":
-                    entry["actions"].append(f"� 感知干涉迷惑了 {poison_target.name}，TA在{self.poison_fake_dice}点时醒来（实际{poison_target.dice}点）")
+                    entry["actions"].append(f"🌀 感知干涉迷惑了 {poison_target.name}，TA在{self.poison_fake_dice}点时醒来（实际{poison_target.dice}点）")
                 else:
-                    entry["actions"].append(f"� 感知干涉迷惑了 {poison_target.name}，TA看到了错误的信息（以为周围是{self.poison_fake_dice}点的玩家）")
+                    entry["actions"].append(f"🌀 感知干涉迷惑了 {poison_target.name}，TA看到了错误的信息（以为周围是{self.poison_fake_dice}点的玩家）")
         elif player.hex_skill == "time_warp" and self.swap_info:
             p1_name = self.players[self.swap_info['pid1']].name
             p2_name = self.players[self.swap_info['pid2']].name

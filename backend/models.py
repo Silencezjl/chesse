@@ -83,6 +83,12 @@ class Player:
             # Drunk mouse sees themselves as thief (except in reveal phase)
             if is_self and not reveal and self.outsider == "drunk":
                 data["role"] = Role.THIEF
+            elif reveal and self.role == Role.JERRY:
+                # Jerry shows as mouse in result, jerry identity shown via outsider tag
+                data["role"] = Role.MOUSE
+            elif reveal and self.role == Role.DODOBIRD:
+                # Dodobird shows as mouse in result, dodobird identity shown via outsider tag
+                data["role"] = Role.MOUSE
             else:
                 data["role"] = self.role
             data["dice"] = self.dice if reveal else self.display_dice

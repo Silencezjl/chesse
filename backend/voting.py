@@ -37,6 +37,12 @@ class VotingMixin:
                        and not voter.is_accomplice)
         if (voter.is_accomplice or is_fake_acc) and target_id == self.thief_id:
             return False, "作为共犯，你不能给奶酪大盗投票"
+        # Dodobird and thief can only vote for each other
+        if self.dodobird_id:
+            if voter_id == self.dodobird_id and target_id != self.thief_id:
+                return False, "呆呆鸟只能投票给奶酪大盗"
+            if voter_id == self.thief_id and target_id != self.dodobird_id:
+                return False, "奶酪大盗只能投票给呆呆鸟"
         voter.voted_for = target_id
         return True, ""
 

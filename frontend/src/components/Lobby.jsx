@@ -148,6 +148,7 @@ export default function Lobby({ ws }) {
                     <li>🏆 胜利条件：第三方阵营，自己被投出局即获胜。</li>
                     <li>🔍 知道大盗身份，大盗也知道呆呆鸟。拥有选"假共犯"能力。</li>
                     <li>🎭 被选中的玩家以为大盗选了自己为共犯（实际是呆呆鸟选的，看到的大盗信息也是呆呆鸟）。</li>
+                    <li>🗳️ 投票限制：呆呆鸟只能投给大盗，大盗也只能投给呆呆鸟，双方只能互投。</li>
                   </ul>
                 </div>
                 <div>
@@ -329,7 +330,7 @@ export default function Lobby({ ws }) {
                 </div>
                 <div className="space-y-2">
                   {[
-                    { key: 'drunk', label: '� 酒鬼鼠', desc: '以为自己是大盗，实际是老鼠', value: outsiderDrunk, setter: setOutsiderDrunk },
+                    { key: 'drunk', label: '🍻 酒鬼鼠', desc: '以为自己是大盗，实际是老鼠', value: outsiderDrunk, setter: setOutsiderDrunk },
                     { key: 'dodobird', label: '🐦 呆呆鸟', desc: '知道大盗身份，可选假共犯，目标被投出局', value: outsiderDodobird, setter: setOutsiderDodobird },
                     { key: 'tom_jerry', label: '🐱🐭 Tom & Jerry', desc: '共犯变Tom(刺客)，随机一鼠变Jerry(先知)', value: outsiderTomJerry, setter: setOutsiderTomJerry },
                   ].map((o) => (

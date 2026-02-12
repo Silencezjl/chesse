@@ -133,7 +133,7 @@ class NightInfoMixin:
             # Hex skill info for this player
             if player.hex_skill == "perception_interference":
                 info["hex_skill"] = "perception_interference"
-                info["hex_skill_info"] = "� 你被赋予了海克斯科技「感知干涉」！你的能力迷惑了一名玩家，但你不知道是谁。"
+                info["hex_skill_info"] = "🌀 你被赋予了海克斯科技「感知干涉」！你的能力迷惑了一名玩家，但你不知道是谁。"
             elif player.hex_skill == "time_warp":
                 info["hex_skill"] = "time_warp"
                 info["hex_skill_info"] = "⏳ 你被赋予了海克斯科技「时空错乱」！你的能力让两名玩家在对方的骰子点数时间醒来，但你不知道是谁。"
@@ -248,6 +248,8 @@ class NightInfoMixin:
         thief_player = self.players[self.thief_id]
         info["thief_id"] = self.thief_id
         info["thief_name"] = thief_player.name
+        # Dodobird always sees all dice (regardless of thief_see_all_dice setting)
+        info["all_dice"] = {p_id: p.dice for p_id, p in self.players.items()}
 
         # Dodobird can choose fake accomplice (if accomplice enabled)
         if self.must_choose_accomplice():

@@ -117,11 +117,11 @@ class RoomStateMixin:
                     my_info["role"] = Role.ACCOMPLICE  # they think they are accomplice
                     my_info["is_accomplice"] = True  # they think they are
                     my_info["is_fake_accomplice"] = True  # for result reveal
-                    # Show thief info so fake accomplice sees it after refresh
-                    thief = self.players[self.thief_id]
-                    my_info["thief_id"] = self.thief_id
-                    my_info["thief_name"] = thief.name
-                    my_info["thief_dice"] = thief.dice
+                    # Show dodobird as "thief" so fake accomplice sees dodobird's info
+                    dodobird = self.players[self.dodobird_id]
+                    my_info["thief_id"] = self.dodobird_id
+                    my_info["thief_name"] = dodobird.name
+                    my_info["thief_dice"] = dodobird.dice
                 if self.phase == GamePhase.NIGHT:
                     night = self.get_player_night_info(for_player_id)
                     my_info.update(night)
@@ -154,6 +154,12 @@ class RoomStateMixin:
                                and not p.is_accomplice)
                 if p and (p.is_accomplice or is_fake_acc):
                     data["no_vote_target"] = self.thief_id
+                # Dodobird and thief can only vote for each other
+                if self.dodobird_id:
+                    if for_player_id == self.dodobird_id:
+                        data["vote_only_target"] = self.thief_id
+                    elif for_player_id == self.thief_id:
+                        data["vote_only_target"] = self.dodobird_id
 
         if self.phase == GamePhase.ASSASSINATE:
             data["tom_id"] = self.tom_id

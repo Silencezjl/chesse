@@ -302,6 +302,90 @@ async def handle_peek(ws: WebSocket, player_id: str, data: dict):
         await check_night_complete(room)
 
 
+async def _try_notify_accomplices(room: Room):
+    """Send accomplice notifications after both thief and dodobird have chosen.
+    If dodobird is not in play, send immediately.
+    If both have chosen:
+      - Same target: target is real accomplice, sees real thief
+      - Different targets: real accomplice sees real thief, fake accomplice sees dodobird as 'thief'
+    """
+    thief = room.players[room.thief_id]
+
+    # Drunk mouse special case: thief chose drunk mouse
+    drunk_id = room.outsider_id if room.outsider_type == "drunk" else None
+    if drunk_id and room.thief_raw_accomplice_id == drunk_id:
+        # Don't send to drunk mouse; wait for resolution
+        if room.accomplice_id and room.accomplice_id != drunk_id:
+            real_acc_id = room.accomplice_id
+            await send_to_player(real_acc_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": room.thief_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.display_dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
+                }
+            })
+        return
+
+    # If dodobird is in play, wait for both to choose
+    if room.dodobird_id:
+        if room.thief_raw_accomplice_id is None or room.dodobird_accomplice_id is None:
+            return  # Still waiting for one of them
+
+        real_acc_id = room.accomplice_id
+        fake_acc_id = room.dodobird_accomplice_id
+
+        if real_acc_id == fake_acc_id:
+            # Same target: real accomplice, sees real thief
+            await send_to_player(real_acc_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": room.thief_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.display_dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                }
+            })
+        else:
+            # Different targets: notify real accomplice with real thief
+            if real_acc_id:
+                await send_to_player(real_acc_id, {
+                    "type": "you_are_accomplice",
+                    "data": {
+                        "thief_id": room.thief_id,
+                        "thief_name": thief.name,
+                        "thief_dice": thief.display_dice,
+                        "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                    }
+                })
+            # Notify fake accomplice: sees dodobird as "thief"
+            if fake_acc_id and not room.players[fake_acc_id].is_accomplice:
+                dodobird = room.players[room.dodobird_id]
+                await send_to_player(fake_acc_id, {
+                    "type": "you_are_accomplice",
+                    "data": {
+                        "thief_id": room.dodobird_id,  # shows dodobird as the "thief"
+                        "thief_name": dodobird.name,
+                        "thief_dice": dodobird.dice,
+                        "message": f"奶酪大盗 {dodobird.name} 选择你作为共犯！你们同赢同输。"
+                    }
+                })
+    else:
+        # No dodobird: notify real accomplice immediately
+        if room.accomplice_id:
+            acc_id = room.accomplice_id
+            await send_to_player(acc_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": room.thief_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.display_dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                }
+            })
+
+
 async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
     if not room or room.phase != GamePhase.NIGHT:
@@ -313,7 +397,6 @@ async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
 
     success = room.choose_accomplice(player_id, target_id)
     if success:
-        thief = room.players[player_id]
         accomplice = room.players[target_id]
 
         await ws.send_json({
@@ -325,33 +408,7 @@ async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
             }
         })
 
-        # Check if thief chose drunk mouse (don't notify drunk mouse as accomplice)
-        drunk_id = room.outsider_id if room.outsider_type == "drunk" else None
-        if drunk_id and target_id == drunk_id:
-            # Don't send you_are_accomplice to drunk mouse (they think they're thief)
-            # But if resolution happened (both chose), notify the real accomplice
-            if room.accomplice_id and room.accomplice_id != drunk_id:
-                real_acc_id = room.accomplice_id
-                await send_to_player(real_acc_id, {
-                    "type": "you_are_accomplice",
-                    "data": {
-                        "thief_id": player_id,
-                        "thief_name": thief.name,
-                        "thief_dice": thief.display_dice,
-                        "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
-                    }
-                })
-        else:
-            await send_to_player(target_id, {
-                "type": "you_are_accomplice",
-                "data": {
-                    "thief_id": player_id,
-                    "thief_name": thief.name,
-                    "thief_dice": thief.display_dice,
-                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
-                }
-            })
-
+        await _try_notify_accomplices(room)
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
@@ -424,20 +481,8 @@ async def handle_dodobird_choose_accomplice(ws: WebSocket, player_id: str, data:
             }
         })
 
-        # Send fake "you_are_accomplice" to target (showing real thief's identity)
-        # Only if target is not already the real accomplice (thief already notified them)
-        if not room.players[target_id].is_accomplice:
-            thief = room.players[room.thief_id]
-            await send_to_player(target_id, {
-                "type": "you_are_accomplice",
-                "data": {
-                    "thief_id": room.thief_id,
-                    "thief_name": thief.name,
-                    "thief_dice": thief.dice,
-                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
-                }
-            })
-
+        # Defer notification: _try_notify_accomplices checks if both chose
+        await _try_notify_accomplices(room)
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为假共犯"}})
