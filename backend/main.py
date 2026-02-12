@@ -175,14 +175,17 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
         if 6 <= val <= 10:
             room.max_dice = val
     # Outsider settings
-    if "outsider_ratatouille" in data:
-        room.outsider_ratatouille = bool(data["outsider_ratatouille"])
-    if "outsider_trickster" in data:
-        room.outsider_trickster = bool(data["outsider_trickster"])
     if "outsider_drunk" in data:
         room.outsider_drunk = bool(data["outsider_drunk"])
     if "outsider_dodobird" in data:
         room.outsider_dodobird = bool(data["outsider_dodobird"])
+    if "outsider_tom_jerry" in data:
+        room.outsider_tom_jerry = bool(data["outsider_tom_jerry"])
+    # Hex skill settings
+    if "hex_time_warp" in data:
+        room.hex_time_warp = bool(data["hex_time_warp"])
+    if "hex_perception_interference" in data:
+        room.hex_perception_interference = bool(data["hex_perception_interference"])
 
     await ws.send_json({
         "type": "room_created",
@@ -509,13 +512,96 @@ async def handle_vote(ws: WebSocket, player_id: str, data: dict):
 
         if room.all_voted():
             result = room.tally_votes()
-            await broadcast_to_room(room, {
-                "type": "game_result",
-                "data": result
-            })
-            await send_room_state(room)
+            if result.get("phase") == "assassinate":
+                # Enter ASSASSINATE phase - Tom gets 30s to guess Jerry
+                await broadcast_to_room(room, {
+                    "type": "assassinate_phase",
+                    "data": result
+                })
+                await send_room_state(room)
+                # Start 30s timer
+                asyncio.create_task(_assassinate_timer(room))
+            else:
+                await broadcast_to_room(room, {
+                    "type": "game_result",
+                    "data": result
+                })
+                await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": err_msg}})
+
+
+async def _assassinate_timer(room: Room):
+    """30-second timer for ASSASSINATE phase. If Tom doesn't act, mice win."""
+    await asyncio.sleep(30)
+    if room.phase != GamePhase.ASSASSINATE:
+        return  # Already resolved
+    # Timeout: finalize as mouse win
+    result = room.finalize_assassinate()
+    await broadcast_to_room(room, {
+        "type": "game_result",
+        "data": result
+    })
+    await send_room_state(room)
+
+
+async def handle_assassinate(ws: WebSocket, player_id: str, data: dict):
+    """Handle Tom's assassination attempt."""
+    room = game_manager.find_player_room(player_id)
+    if not room:
+        return
+
+    target_id = data.get("target_id")
+    if not target_id:
+        return
+
+    result = room.tom_assassinate(player_id, target_id)
+    if not result.get("success"):
+        await ws.send_json({"type": "error", "data": {"message": result.get("error", "刺杀失败")}})
+        return
+
+    if result.get("correct"):
+        # Jerry found! Thief wins immediately regardless of phase
+        if room.phase == GamePhase.ASSASSINATE:
+            final = room.finalize_assassinate(result)
+        else:
+            # Assassination during non-ASSASSINATE phase -> instant game over
+            room.phase = GamePhase.RESULT
+            final = {
+                "winner": "thief",
+                "assassinate_result": "success",
+                "assassinate_target_id": target_id,
+                "tom_id": room.tom_id,
+                "tom_name": room.players[room.tom_id].name,
+                "jerry_id": room.jerry_id,
+                "jerry_name": room.players[room.jerry_id].name,
+                "thief_id": room.thief_id,
+                "thief_name": room.players[room.thief_id].name,
+                "accomplice_id": room.accomplice_id,
+                "accomplice_name": room.players[room.accomplice_id].name if room.accomplice_id else None,
+                "players": {pid: p.to_dict(reveal=True) for pid, p in room.players.items()},
+                "action_log": room.build_action_log(),
+            }
+        await broadcast_to_room(room, {"type": "game_result", "data": final})
+        await send_room_state(room)
+    else:
+        # Wrong guess
+        if room.phase == GamePhase.ASSASSINATE:
+            # In ASSASSINATE phase, wrong guess = mice win
+            final = room.finalize_assassinate(result)
+            await broadcast_to_room(room, {"type": "game_result", "data": final})
+            await send_room_state(room)
+        else:
+            # During other phases, assassination wasted - game continues
+            await ws.send_json({
+                "type": "assassinate_failed",
+                "data": {
+                    "message": "刺杀失败！你选错了人，刺杀技能已用尽。",
+                    "target_id": target_id,
+                    "jerry_id": result.get("jerry_id"),
+                }
+            })
+            await send_room_state(room)
 
 
 async def handle_new_game(ws: WebSocket, player_id: str, data: dict):
@@ -613,11 +699,13 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
     # Check if all votes are now in
     if room.phase == GamePhase.VOTING and room.all_voted():
         result = room.tally_votes()
-        await broadcast_to_room(room, {
-            "type": "game_result",
-            "data": result
-        })
-        await send_room_state(room)
+        if result.get("phase") == "assassinate":
+            await broadcast_to_room(room, {"type": "assassinate_phase", "data": result})
+            await send_room_state(room)
+            asyncio.create_task(_assassinate_timer(room))
+        else:
+            await broadcast_to_room(room, {"type": "game_result", "data": result})
+            await send_room_state(room)
 
 
 async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict):
@@ -640,14 +728,16 @@ async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict)
         val = int(data["max_dice"])
         if 6 <= val <= 10:
             room.max_dice = val
-    if "outsider_ratatouille" in data:
-        room.outsider_ratatouille = bool(data["outsider_ratatouille"])
-    if "outsider_trickster" in data:
-        room.outsider_trickster = bool(data["outsider_trickster"])
     if "outsider_drunk" in data:
         room.outsider_drunk = bool(data["outsider_drunk"])
     if "outsider_dodobird" in data:
         room.outsider_dodobird = bool(data["outsider_dodobird"])
+    if "outsider_tom_jerry" in data:
+        room.outsider_tom_jerry = bool(data["outsider_tom_jerry"])
+    if "hex_time_warp" in data:
+        room.hex_time_warp = bool(data["hex_time_warp"])
+    if "hex_perception_interference" in data:
+        room.hex_perception_interference = bool(data["hex_perception_interference"])
 
     await send_room_state(room)
 
@@ -664,6 +754,7 @@ MESSAGE_HANDLERS = {
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,
+    "assassinate": handle_assassinate,
     "new_game": handle_new_game,
     "update_room_settings": handle_update_room_settings,
     "leave_room": handle_leave_room,
@@ -693,11 +784,13 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             # After reconnection, check if all votes are now in
             if room.phase == GamePhase.VOTING and room.all_voted():
                 result = room.tally_votes()
-                await broadcast_to_room(room, {
-                    "type": "game_result",
-                    "data": result
-                })
-                await send_room_state(room)
+                if result.get("phase") == "assassinate":
+                    await broadcast_to_room(room, {"type": "assassinate_phase", "data": result})
+                    await send_room_state(room)
+                    asyncio.create_task(_assassinate_timer(room))
+                else:
+                    await broadcast_to_room(room, {"type": "game_result", "data": result})
+                    await send_room_state(room)
         elif room and player_id in room.spectators:
             room.spectators[player_id].connected = True
             room.update_disconnect_timer()

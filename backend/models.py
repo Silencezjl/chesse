@@ -10,6 +10,7 @@ class GamePhase(str, Enum):
     NIGHT = "night"
     DAY = "day"
     VOTING = "voting"
+    ASSASSINATE = "assassinate"
     RESULT = "result"
 
 
@@ -18,6 +19,7 @@ class Role(str, Enum):
     MOUSE = "mouse"
     ACCOMPLICE = "accomplice"
     DODOBIRD = "dodobird"
+    JERRY = "jerry"
 
 
 AVATARS = [
@@ -66,7 +68,8 @@ class Player:
         self.peek_target: Optional[str] = None
         self.peek_result: Optional[int] = None
         self.is_accomplice: bool = False
-        self.outsider: Optional[str] = None  # None, "ratatouille", "trickster", "drunk"
+        self.outsider: Optional[str] = None  # None, "drunk", "dodobird", "tom", "jerry"
+        self.hex_skill: Optional[str] = None  # None, "time_warp", "perception_interference"
 
     def to_dict(self, reveal: bool = False, is_self: bool = False) -> dict:
         data = {
@@ -86,6 +89,8 @@ class Player:
             data["is_accomplice"] = self.is_accomplice
             if reveal and self.outsider:
                 data["outsider"] = self.outsider
+            if reveal and self.hex_skill:
+                data["hex_skill"] = self.hex_skill
             if reveal and self.display_dice != self.dice:
                 data["display_dice"] = self.display_dice
                 data["actual_dice"] = self.dice
@@ -107,6 +112,7 @@ class Player:
         self.peek_result = None
         self.is_accomplice = False
         self.outsider = None
+        self.hex_skill = None
 
     def serialize(self) -> dict:
         """Serialize player state for Redis persistence."""
@@ -125,6 +131,7 @@ class Player:
             "peek_result": self.peek_result,
             "is_accomplice": self.is_accomplice,
             "outsider": self.outsider,
+            "hex_skill": self.hex_skill,
         }
 
     @classmethod
@@ -142,4 +149,5 @@ class Player:
         p.peek_result = data.get("peek_result")
         p.is_accomplice = data.get("is_accomplice", False)
         p.outsider = data.get("outsider")
+        p.hex_skill = data.get("hex_skill")
         return p

@@ -11,18 +11,23 @@ function DiceIcon({ value, size = 20 }) {
   return Icon ? <Icon size={size} /> : <span>{value}</span>;
 }
 
-function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, myVote, canAccomplice, canDodobirdAccomplice, noVoteTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
+function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, onAssassinate, myVote, canAccomplice, canDodobirdAccomplice, canAssassinate, noVoteTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
   const OUTSIDER_LABELS = {
-    ratatouille: '🍳 料理鼠王',
-    trickster: '🧸 鼠小弟',
     drunk: '🍺 酒鬼鼠',
     dodobird: '🐦 呆呆鸟',
+    tom: '🐱 Tom（刺客）',
+    jerry: '🐭 Jerry（先知）',
+  };
+  const HEX_LABELS = {
+    time_warp: '⏳ 时空错乱',
+    perception_interference: '🌀 感知干涉',
   };
   const roleLabel = {
     thief: '🧀 奶酪大盗',
     mouse: '🐭 瞌睡鼠',
     accomplice: '🤝 共犯',
     dodobird: '🐦 呆呆鸟',
+    jerry: '🐭 Jerry',
   };
 
   const isDisconnected = !player.connected;
@@ -74,6 +79,12 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
           {OUTSIDER_LABELS[player.outsider] || player.outsider}
         </div>
       )}
+      {/* Show hex skill tag only in result phase */}
+      {phase === 'result' && player.hex_skill && (
+        <div className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-300">
+          {HEX_LABELS[player.hex_skill] || player.hex_skill}
+        </div>
+      )}
 
       {/* Night: Peek button for mice */}
       {phase === 'night' && !isMe && onPeek && (
@@ -102,6 +113,26 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
           className="text-xs px-3 py-1 bg-teal-500/50 text-white rounded-lg hover:bg-teal-500/70 transition flex items-center gap-1"
         >
           <UserPlus size={12} /> 选为假共犯
+        </button>
+      )}
+
+      {/* Assassinate button for Tom */}
+      {canAssassinate && !isMe && onAssassinate && player.id !== noVoteTarget && (
+        <button
+          onClick={() => onAssassinate(player.id)}
+          className="text-xs px-3 py-1 bg-red-600/60 text-white rounded-lg hover:bg-red-600/80 transition flex items-center gap-1"
+        >
+          🗡️ 刺杀
+        </button>
+      )}
+
+      {/* ASSASSINATE phase: only Tom can select */}
+      {phase === 'assassinate' && isMeTom && !isMe && player.id !== noVoteTarget && onAssassinate && (
+        <button
+          onClick={() => onAssassinate(player.id)}
+          className="text-xs px-3 py-1 bg-red-600/70 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-1 animate-pulse"
+        >
+          🗡️ 刺杀
         </button>
       )}
 
@@ -200,15 +231,24 @@ export default function Room({ ws }) {
     send('leave_room', {});
   };
 
+  const handleAssassinate = (targetId) => {
+    if (window.confirm('确定要刺杀这名玩家吗？刺杀技能只能使用一次！')) {
+      send('assassinate', { target_id: targetId });
+    }
+  };
+
   const isMeDrunk = gameInfo?.is_drunk || gameInfo?.outsider_actual === 'drunk';
   const isMeThief = gameInfo?.role === 'thief' && !isMeDrunk;
   const isMeFakeThief = gameInfo?.role === 'thief' && isMeDrunk;
   const isMeAccomplice = gameInfo?.role === 'accomplice';
   const isMeDodobird = gameInfo?.is_dodobird || gameInfo?.role === 'dodobird';
+  const isMeTom = gameInfo?.is_tom || roomState?.is_tom;
+  const isMeJerry = gameInfo?.is_jerry || gameInfo?.role === 'jerry';
   // Bug1: Use can_peek from night_info (respects dice group rule)
   const canPeek = phase === 'night' && gameInfo?.can_peek && !gameInfo?.has_peeked;
   const canAccomplice = phase === 'night' && (isMeThief || isMeFakeThief) && gameInfo?.can_choose_accomplice;
   const canDodobirdAccomplice = phase === 'night' && isMeDodobird && gameInfo?.can_choose_accomplice;
+  const canAssassinate = isMeTom && (gameInfo?.can_assassinate || roomState?.can_assassinate);
   const isCreator = playerId === creator_id;
 
   return (
@@ -234,7 +274,13 @@ export default function Room({ ws }) {
               {roomState.outsiders && roomState.outsiders.length > 0 && (
                 <>
                   <span className="mx-1">·</span>
-                  🌟 {roomState.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : o === 'drunk' ? '🍺' : o === 'dodobird' ? '🐦' : '').join('')}
+                  🌟 {roomState.outsiders.map(o => o === 'drunk' ? '�' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}
+                </>
+              )}
+              {roomState.hex_skills && roomState.hex_skills.length > 0 && (
+                <>
+                  <span className="mx-1">·</span>
+                  ⚡ {roomState.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : '').join('')}
                 </>
               )}
             </div>
@@ -248,12 +294,14 @@ export default function Room({ ws }) {
             phase === 'night' ? 'bg-indigo-500/30 text-indigo-300' :
             phase === 'day' ? 'bg-amber-600/30 text-amber-800' :
             phase === 'voting' ? 'bg-red-500/30 text-red-300' :
+            phase === 'assassinate' ? 'bg-red-700/30 text-red-400' :
             'bg-emerald-600/30 text-emerald-800'
           }`}>
             {phase === 'waiting' && '⏳ 等待中'}
             {phase === 'night' && '🌙 夜晚'}
             {phase === 'day' && '☀️ 白天'}
             {phase === 'voting' && '🗳️ 投票'}
+            {phase === 'assassinate' && '🗡️ 刺杀'}
             {phase === 'result' && '🏆 结果'}
           </div>
           {(phase === 'waiting' || isSpectator) && (
@@ -295,29 +343,11 @@ export default function Room({ ws }) {
               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={roomState.outsiders?.includes('ratatouille')}
-                  onChange={(e) => send('update_room_settings', { outsider_ratatouille: e.target.checked })}
-                  className="accent-cheese-400"
-                />
-                <span className="text-white/70">🍳 料理鼠王</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={roomState.outsiders?.includes('trickster')}
-                  onChange={(e) => send('update_room_settings', { outsider_trickster: e.target.checked })}
-                  className="accent-cheese-400"
-                />
-                <span className="text-white/70">🧸 鼠小弟</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
                   checked={roomState.outsiders?.includes('drunk')}
                   onChange={(e) => send('update_room_settings', { outsider_drunk: e.target.checked })}
                   className="accent-cheese-400"
                 />
-                <span className="text-white/70">🍺 酒鬼鼠</span>
+                <span className="text-white/70">� 酒鬼鼠</span>
               </label>
               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                 <input
@@ -327,6 +357,36 @@ export default function Room({ ws }) {
                   className="accent-cheese-400"
                 />
                 <span className="text-white/70">🐦 呆呆鸟</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.outsiders?.includes('tom_jerry')}
+                  onChange={(e) => send('update_room_settings', { outsider_tom_jerry: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🐱🐭 Tom & Jerry</span>
+              </label>
+            </div>
+            <div className="w-full border-t border-white/10 pt-2 mt-1 flex flex-wrap gap-3">
+              <span className="text-sm text-white/50">⚡ 海克斯：</span>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.hex_skills?.includes('time_warp')}
+                  onChange={(e) => send('update_room_settings', { hex_time_warp: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">⏳ 时空错乱</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.hex_skills?.includes('perception_interference')}
+                  onChange={(e) => send('update_room_settings', { hex_perception_interference: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🌀 感知干涉</span>
               </label>
             </div>
           </div>
@@ -345,17 +405,17 @@ export default function Room({ ws }) {
       )}
 
       {/* Game Info Banner */}
-      {!isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
+      {!isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting' || phase === 'assassinate') && gameInfo && (
         <div className={`glass-card p-4 ${
-          (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : 'border-blue-500/30'
+          (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : isMeJerry ? 'border-emerald-500/30' : isMeTom ? 'border-red-700/30' : 'border-blue-500/30'
         }`}>
           <div className="flex items-center gap-3">
             <div className="text-4xl">
-              {isMeThief || isMeFakeThief ? '🧀' : isMeAccomplice ? '🤝' : isMeDodobird ? '�' : '�'}
+              {isMeThief || isMeFakeThief ? '🧀' : isMeTom ? '🐱' : isMeAccomplice ? '🤝' : isMeDodobird ? '🐦' : isMeJerry ? '🐭' : '🐭'}
             </div>
             <div className="flex-1">
               <div className="font-bold text-lg">
-                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : isMeDodobird ? <span className="text-teal-400">你是呆呆鸟！</span> : '你是瞌睡鼠'}
+                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeTom ? <span className="text-red-400">你是共犯 / Tom（刺客）！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : isMeDodobird ? <span className="text-teal-400">你是呆呆鸟！</span> : isMeJerry ? <span className="text-emerald-400">你是 Jerry（先知）！</span> : '你是瞌睡鼠'}
               </div>
               <div className="text-sm text-white/60 flex items-center gap-2">
                 你的骰子: <span className="text-cheese-400 font-bold flex items-center gap-1"><DiceIcon value={gameInfo.dice} size={18} /> {gameInfo.dice}点</span>
@@ -395,10 +455,31 @@ export default function Room({ ws }) {
                 </div>
               )}
 
+              {/* Jerry's special message */}
+              {gameInfo.jerry_message && (
+                <div className="text-sm text-emerald-300 mt-1 whitespace-pre-line">
+                  {gameInfo.jerry_message}
+                </div>
+              )}
+
               {/* Outsider info */}
               {gameInfo.outsider_info && (
                 <div className="text-sm text-purple-300 mt-1 whitespace-pre-line">
                   {gameInfo.outsider_info}
+                </div>
+              )}
+
+              {/* Hex skill info */}
+              {gameInfo.hex_skill_info && (
+                <div className="text-sm text-cyan-300 mt-1 whitespace-pre-line">
+                  {gameInfo.hex_skill_info}
+                </div>
+              )}
+
+              {/* Tom assassination hint */}
+              {isMeTom && canAssassinate && phase !== 'assassinate' && (
+                <div className="text-sm text-red-400 mt-1">
+                  🗡️ 你可以在任意时刻刺杀一名玩家，若命中 Jerry 则大盗阵营直接获胜！（点击玩家卡片上的「刺杀」按钮）
                 </div>
               )}
 
@@ -421,8 +502,8 @@ export default function Room({ ws }) {
             </div>
           </div>
 
-          {/* Thief: All dice overview (also shown to drunk mouse who thinks they're thief) */}
-          {(isMeThief || isMeFakeThief) && gameInfo.all_dice && (
+          {/* All dice overview: Thief, drunk mouse (fake thief), or Jerry */}
+          {(isMeThief || isMeFakeThief || isMeJerry) && gameInfo.all_dice && (
             <div className="mt-3 p-3 bg-black/20 rounded-lg">
               <div className="text-xs text-white/50 mb-2">所有玩家骰子点数：</div>
               <div className="flex flex-wrap gap-2">
@@ -442,25 +523,59 @@ export default function Room({ ws }) {
         </div>
       )}
 
+      {/* ASSASSINATE Phase Banner */}
+      {phase === 'assassinate' && (
+        <div className="glass-card p-6 text-center border-red-700/30">
+          <div className="text-5xl mb-3 animate-pulse">🗡️</div>
+          <div className="text-2xl font-bold mb-2 text-red-400">刺杀阶段！</div>
+          <div className="text-white/60 mb-2">
+            瞌睡鼠成功投票出了奶酪大盗！但 Tom（刺客）有 30 秒时间进行刺杀。
+          </div>
+          {isMeTom ? (
+            <div className="text-lg text-red-300 font-bold animate-pulse">
+              🐱 你是 Tom！请在 30 秒内选择一名玩家刺杀，猜中 Jerry 即可逆转胜局！
+            </div>
+          ) : (
+            <div className="text-sm text-white/50">
+              等待 Tom 做出选择...
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Result Banner */}
       {phase === 'result' && roomState.winner && (
         <div className={`glass-card p-6 text-center ${
           roomState.winner === 'mouse' ? 'border-green-500/30' : 'border-red-500/30'
         }`}>
           <div className="text-5xl mb-3">
-            {gameInfo?.result?.dodobird_win ? '🐦' : roomState.winner === 'mouse' ? '🎉' : '😈'}
+            {gameInfo?.result?.dodobird_win ? '🐦'
+              : roomState.assassinate_result === 'success' ? '🐱🗡️'
+              : roomState.winner === 'mouse' ? '🎉' : '😈'}
           </div>
           <div className="text-2xl font-bold mb-2">
             {gameInfo?.result?.dodobird_win
               ? '呆呆鸟胜利！'
-              : roomState.winner === 'mouse' ? '瞌睡鼠胜利！' : '奶酪大盗胜利！'}
+              : roomState.assassinate_result === 'success'
+                ? 'Tom 刺杀成功！大盗阵营胜利！'
+                : roomState.assassinate_result === 'fail'
+                  ? 'Tom 刺杀失败！瞌睡鼠胜利！'
+                  : roomState.assassinate_result === 'timeout'
+                    ? 'Tom 刺杀超时！瞌睡鼠胜利！'
+                    : roomState.winner === 'mouse' ? '瞌睡鼠胜利！' : '奶酪大盗胜利！'}
           </div>
           <div className="text-white/60 mb-2">
             {gameInfo?.result?.dodobird_win
               ? `呆呆鸟 ${gameInfo.result.dodobird_name} 成功让自己被投票出局！`
-              : roomState.winner === 'mouse'
-                ? '成功找出了奶酪大盗！'
-                : '大盗成功蒙混过关！'}
+              : roomState.assassinate_result === 'success'
+                ? `Tom 正确刺杀了 Jerry！`
+                : roomState.assassinate_result === 'fail'
+                  ? `Tom 刺杀了错误的人，Jerry 安全了！`
+                  : roomState.assassinate_result === 'timeout'
+                    ? `Tom 未能在时限内行动，瞌睡鼠获胜！`
+                    : roomState.winner === 'mouse'
+                      ? '成功找出了奶酪大盗！'
+                      : '大盗成功蒙混过关！'}
           </div>
           {gameInfo?.result && (
             <div className="text-sm text-white/50">
@@ -474,6 +589,9 @@ export default function Room({ ws }) {
                   ? ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（与大盗同选→真共犯）`
                   : ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（非真共犯）`
               )}
+              {gameInfo.result.tom_name && ` | 🐱 Tom: ${gameInfo.result.tom_name}`}
+              {gameInfo.result.jerry_name && ` | 🐭 Jerry: ${gameInfo.result.jerry_name}`}
+              {gameInfo.result.hex_type && gameInfo.result.hex_target_name && ` | ⚡ ${gameInfo.result.hex_type === 'time_warp' ? '⏳时空错乱' : '🌀感知干涉'}: ${gameInfo.result.hex_target_name}`}
             </div>
           )}
         </div>
@@ -490,9 +608,9 @@ export default function Room({ ws }) {
                 accomplice: 'border-yellow-500/40 bg-yellow-500/10',
                 mouse: 'border-blue-500/40 bg-blue-500/10',
                 dodobird: 'border-teal-500/40 bg-teal-500/10',
+                jerry: 'border-emerald-500/40 bg-emerald-500/10',
               };
-              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯', dodobird: '🐦 呆呆鸟' };
-              const outsiderLabels = { ratatouille: '🍳 料理鼠王', trickster: '🧸 鼠小弟', drunk: '🍺 酒鬼鼠' };
+              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯', dodobird: '🐦 呆呆鸟', jerry: '🐭 Jerry' };
               const isMyEntry = entry.player_id === playerId;
               return (
                 <div key={entry.player_id} className={`border rounded-lg p-3 relative ${roleColors[entry.role] || roleColors.mouse} ${isMyEntry ? 'ring-2 ring-cheese-400 bg-cheese-400/10' : ''}`}>
@@ -503,6 +621,9 @@ export default function Room({ ws }) {
                     <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{roleLabels[entry.role] || entry.role}</span>
                     {entry.outsider_label && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{entry.outsider_label}</span>
+                    )}
+                    {entry.hex_skill_label && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300">{entry.hex_skill_label}</span>
                     )}
                     {entry.dodobird_label && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">{entry.dodobird_label}</span>
@@ -543,14 +664,17 @@ export default function Room({ ws }) {
               isMe={p.id === playerId}
               isCreator={p.id === creator_id}
               isMeThief={isMeThief}
+              isMeTom={isMeTom}
               phase={phase}
               onPeek={canPeek ? handlePeek : null}
               onVote={phase === 'voting' ? handleVote : null}
               onAccomplice={canAccomplice ? handleAccomplice : null}
               onDodobirdAccomplice={canDodobirdAccomplice ? handleDodobirdAccomplice : null}
+              onAssassinate={(canAssassinate || phase === 'assassinate') ? handleAssassinate : null}
               myVote={me?.voted_for}
               canAccomplice={canAccomplice}
               canDodobirdAccomplice={canDodobirdAccomplice}
+              canAssassinate={canAssassinate}
               excludeAccomplice={gameInfo?.dodobird_id}
               excludeDodobirdAccomplice={gameInfo?.thief_id}
               noVoteTarget={roomState.no_vote_target}
@@ -650,6 +774,15 @@ export default function Room({ ws }) {
         {!isSpectator && phase === 'voting' && (
           <div className="text-sm text-white/50">
             🗳️ 投票中 ({roomState.voted_count || 0}/{roomState.total_voters || 0})
+          </div>
+        )}
+
+        {phase === 'assassinate' && !isSpectator && (
+          <div className="text-sm text-white/50">
+            {isMeTom
+              ? '🗡️ 请在玩家列表中选择一名玩家进行刺杀！'
+              : '⏳ 等待 Tom（刺客）做出选择...'
+            }
           </div>
         )}
 
