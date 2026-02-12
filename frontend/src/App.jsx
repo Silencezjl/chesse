@@ -34,6 +34,11 @@ export default function App() {
           <span className={`w-2 h-2 rounded-full ${ws.connected ? 'bg-green-400' : 'bg-red-400'}`} />
           <span className="text-xs text-white/50">
             {ws.connected ? '已连接' : '连接中...'}
+            {ws.connected && ws.latency != null && (
+              <span className={`ml-1 ${ws.latency < 100 ? 'text-green-400/60' : ws.latency < 300 ? 'text-yellow-400/60' : 'text-red-400/60'}`}>
+                {ws.latency}ms
+              </span>
+            )}
           </span>
         </div>
       </header>

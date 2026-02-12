@@ -31,6 +31,7 @@ export default function Lobby({ ws }) {
   const [outsiderRatatouille, setOutsiderRatatouille] = useState(false);
   const [outsiderTrickster, setOutsiderTrickster] = useState(false);
   const [outsiderDrunk, setOutsiderDrunk] = useState(false);
+  const [outsiderDodobird, setOutsiderDodobird] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
@@ -48,6 +49,7 @@ export default function Lobby({ ws }) {
       outsider_ratatouille: outsiderRatatouille,
       outsider_trickster: outsiderTrickster,
       outsider_drunk: outsiderDrunk,
+      outsider_dodobird: outsiderDodobird,
     });
   };
 
@@ -98,6 +100,7 @@ export default function Lobby({ ws }) {
           <div className="mt-8 text-xs text-white/30 space-y-1">
             <p>🐭 瞌睡鼠：找出谁偷了奶酪</p>
             <p>🧀 奶酪大盗：隐藏身份蒙混过关</p>
+            <p>🐦 呆呆鸟：外来者角色，让自己被投出局</p>
           </div>
         </div>
 
@@ -130,8 +133,17 @@ export default function Lobby({ ws }) {
               <p className="mb-2">开启后每局随机出现一个外来者身份，增加游戏随机性和趣味性。（酒鬼鼠一定出现在瞌睡鼠阵营；其余外来着也可能被选做“共犯” 或 出现在大盗身上）</p>
               <ul className="list-disc list-inside space-y-1 text-white/40">
                 <li><span className="text-white/60">🍳 料理鼠王</span>：技能是黑暗料理；开局随机迷惑一名玩家（不是自己，可能是大盗）。被迷惑者会遭遇以下其中一种效果：①在错误的时间醒来，但进行正确的操作；②在正确的时间醒来，但看到错误的人或偷看到错误的信息。料理鼠王只知道自己的身份，不知道迷惑了谁。</li>
-                <li><span className="text-white/60">🧸 鼠小弟</span>：技能是捣蛋；开局随机交换两人的骰子（可能是自己），被换者以为自己是原来的点数醒来。鼠小弟只知道自己的身份，不知道调换了谁。</li>
+                <li><span className="text-white/60">🧸 鼠小弟</span>：技能是捣蛋；开局随机让两名玩家在对方的骰子点数时间醒来（可能是自己），但不会交换骰子，玩家看到的永远是自己正确的骰子。鼠小弟只知道自己的身份，不知道调换了谁。</li>
                 <li><span className="text-white/60">🍺 酒鬼鼠</span>：技能是醉酒；一定是瞌睡鼠阵营，但以为自己是大盗，全程闭眼睡觉做梦，不会被别人看到睁眼。也会选“共犯”，只有真大盗也选了酒鬼鼠时，酒鬼鼠选的共犯才会生效。🤝但：如果大盗和酒鬼鼠互相选择对方作为共犯，则本局没有共犯，大盗单独行动。</li>
+                <li className="mt-2 pt-2 border-t border-white/5">
+                  <span className="text-white/60">🐦 呆呆鸟</span>：
+                  <ul className="list-disc list-inside ml-4 mt-1 space-y-0.5">
+                    <li>🏆 <span className="text-white/50">胜利条件</span>：在白天投票阶段，自己被公投出局即可获胜。</li>
+                    <li>🔍 <span className="text-white/50">特性</span>：能看到自己是呆呆鸟的身份；呆呆鸟知道大盗是谁，大盗也知道呆呆鸟是谁；拥有选择“假共犯”的能力。</li>
+                    <li>🎭 <span className="text-white/50">假共犯机制</span>：被呆呆鸟选中的玩家会以为是大盗选了自己为共犯（实际是呆呆鸟选的）；除非该玩家同时被大盗和呆呆鸟选中，才是真共犯；大盗和呆呆鸟不能互相选为共犯。</li>
+                    <li>🎮 <span className="text-white/50">行动流程</span>：和瞌睡鼠一样按骰子点数睁眼、可偷看、可观察 → 选择一名假共犯（不能选大盗） → 白天讨论投票，努力让自己被投出局。</li>
+                  </ul>
+                </li>
               </ul>
             </div>
           </div>
@@ -296,8 +308,9 @@ export default function Lobby({ ws }) {
                 <div className="space-y-2">
                   {[
                     { key: 'ratatouille', label: '🍳 料理鼠王', desc: '黑暗料理迷惑一人，使其在错误时间醒来', value: outsiderRatatouille, setter: setOutsiderRatatouille },
-                    { key: 'trickster', label: '🧸 鼠小弟', desc: '随机交换两人骰子，被换者不知情', value: outsiderTrickster, setter: setOutsiderTrickster },
+                    { key: 'trickster', label: '🧸 鼠小弟', desc: '随机让两人在对方的点数时间醒来', value: outsiderTrickster, setter: setOutsiderTrickster },
                     { key: 'drunk', label: '🍺 酒鬼鼠', desc: '以为自己是大盗，实际是老鼠', value: outsiderDrunk, setter: setOutsiderDrunk },
+                    { key: 'dodobird', label: '🐦 呆呆鸟', desc: '知道大盗身份，可选假共犯，目标被投出局', value: outsiderDodobird, setter: setOutsiderDodobird },
                   ].map((o) => (
                     <div
                       key={o.key}
@@ -367,7 +380,7 @@ export default function Lobby({ ws }) {
                           <span>🎲 {room.max_dice}面</span>
                           <span>{room.thief_see_all_dice ? '👁 可见点数' : '🙈 不可见点数'}</span>
                           {room.outsiders && room.outsiders.length > 0 && (
-                            <span>🌟 {room.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}</span>
+                            <span>🌟 {room.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : o === 'drunk' ? '🍺' : o === 'dodobird' ? '🐦' : '').join('')}</span>
                           )}
                         </div>
                       </div>

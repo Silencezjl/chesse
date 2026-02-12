@@ -4,9 +4,6 @@ import uuid
 import logging
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
 
 from models import Player, GamePhase, Role
 from game import GameManager, Room
@@ -184,6 +181,8 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
         room.outsider_trickster = bool(data["outsider_trickster"])
     if "outsider_drunk" in data:
         room.outsider_drunk = bool(data["outsider_drunk"])
+    if "outsider_dodobird" in data:
+        room.outsider_dodobird = bool(data["outsider_dodobird"])
 
     await ws.send_json({
         "type": "room_created",
@@ -398,6 +397,49 @@ async def handle_drunk_choose_accomplice(ws: WebSocket, player_id: str, data: di
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
 
 
+async def handle_dodobird_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
+    """Handle dodobird choosing a fake accomplice."""
+    room = game_manager.find_player_room(player_id)
+    if not room or room.phase != GamePhase.NIGHT:
+        return
+
+    target_id = data.get("target_id")
+    if not target_id:
+        return
+
+    success = room.dodobird_choose_accomplice(player_id, target_id)
+    if success:
+        target = room.players[target_id]
+
+        # Tell dodobird their choice was made
+        await ws.send_json({
+            "type": "accomplice_chosen",
+            "data": {
+                "accomplice_id": target_id,
+                "accomplice_name": target.name,
+                "message": f"你选择了 {target.name} 作为假共犯"
+            }
+        })
+
+        # Send fake "you_are_accomplice" to target (showing real thief's identity)
+        # Only if target is not already the real accomplice (thief already notified them)
+        if not room.players[target_id].is_accomplice:
+            thief = room.players[room.thief_id]
+            await send_to_player(target_id, {
+                "type": "you_are_accomplice",
+                "data": {
+                    "thief_id": room.thief_id,
+                    "thief_name": thief.name,
+                    "thief_dice": thief.dice,
+                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"
+                }
+            })
+
+        await send_room_state(room)
+    else:
+        await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为假共犯"}})
+
+
 async def handle_night_done(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
     if not room or room.phase != GamePhase.NIGHT:
@@ -604,6 +646,8 @@ async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict)
         room.outsider_trickster = bool(data["outsider_trickster"])
     if "outsider_drunk" in data:
         room.outsider_drunk = bool(data["outsider_drunk"])
+    if "outsider_dodobird" in data:
+        room.outsider_dodobird = bool(data["outsider_dodobird"])
 
     await send_room_state(room)
 
@@ -616,6 +660,7 @@ MESSAGE_HANDLERS = {
     "peek": handle_peek,
     "choose_accomplice": handle_choose_accomplice,
     "drunk_choose_accomplice": handle_drunk_choose_accomplice,
+    "dodobird_choose_accomplice": handle_dodobird_choose_accomplice,
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,
@@ -712,14 +757,3 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 save_room_to_redis(room)
 
 
-# Serve frontend static files
-frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-if os.path.exists(frontend_dir):
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dir, "assets")), name="assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        file_path = os.path.join(frontend_dir, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(frontend_dir, "index.html"))

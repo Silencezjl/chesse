@@ -7,8 +7,24 @@ RUN npm config set registry https://registry.npmmirror.com && npm install
 COPY frontend/ ./
 RUN npm run build
 
-# ---- Stage 2: Run Backend + Serve Frontend ----
-FROM docker.m.daocloud.io/python:3.11-slim
+# ---- Stage 2: Frontend (nginx) ----
+FROM docker.m.daocloud.io/nginx:alpine AS frontend
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+
+# ---- Stage 3: Backend ----
+FROM docker.m.daocloud.io/python:3.11-slim AS backend
 
 WORKDIR /app
 
@@ -18,9 +34,6 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r /ap
 
 # Copy backend code
 COPY backend/ /app/backend/
-
-# Copy built frontend from stage 1
-COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
 WORKDIR /app/backend
 

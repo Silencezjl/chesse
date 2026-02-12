@@ -34,15 +34,18 @@ class Room:
         self.outsider_ratatouille: bool = False  # 料理鼠王 🍳
         self.outsider_trickster: bool = False    # 鼠小弟 🧸
         self.outsider_drunk: bool = False         # 酒鬼鼠 🍺
+        self.outsider_dodobird: bool = False      # 呆呆鸟 🐦
         # Outsider game state
         self.outsider_type: Optional[str] = None  # which outsider is active this game
         self.outsider_id: Optional[str] = None    # player id of the outsider
         self.poison_target_id: Optional[str] = None  # 料理鼠王's poison target
         self.poison_fake_dice: Optional[int] = None    # fake dice value for poisoned player
         self.poison_mode: Optional[str] = None  # "wrong_time" or "wrong_info"
-        self.swap_info: Optional[dict] = None     # 鼠小弟 swap info {pid1, pid2, dice1_orig, dice2_orig}
+        self.swap_info: Optional[dict] = None     # 鼠小弟 swap info {pid1, pid2, dice1, dice2}
         self.drunk_accomplice_id: Optional[str] = None  # who drunk mouse chose as accomplice
         self.thief_raw_accomplice_id: Optional[str] = None  # who thief initially chose (before resolution)
+        self.dodobird_id: Optional[str] = None    # player id of the dodobird
+        self.dodobird_accomplice_id: Optional[str] = None  # who dodobird chose as fake accomplice
         self.spectators: dict[str, Player] = {}  # players watching the game (joined mid-game)
 
     def update_disconnect_timer(self):
@@ -94,7 +97,10 @@ class Room:
             result.append("trickster")
         if self.outsider_drunk:
             result.append("drunk")
+        if self.outsider_dodobird:
+            result.append("dodobird")
         return result
+
 
     def add_player(self, player: Player) -> bool:
         if len(self.players) >= self.max_players:
@@ -176,8 +182,10 @@ class Room:
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
+        self.dodobird_id = None
+        self.dodobird_accomplice_id = None
 
-        # Assign outsider (at most one per game)
+        # Assign outsider (at most one per game, includes dodobird)
         self._assign_outsider()
 
         self.phase = GamePhase.NIGHT
@@ -197,6 +205,9 @@ class Room:
                     continue
             # Thief must choose accomplice, not auto-done
             if player.role == Role.THIEF:
+                continue
+            # Dodobird must choose fake accomplice (if accomplice enabled), not auto-done
+            if player.role == Role.DODOBIRD and self.must_choose_accomplice():
                 continue
             # Trickster can't peek, auto-done
             if player.outsider == "trickster":
@@ -243,19 +254,17 @@ class Room:
             candidates = list(self.players.keys())
             self.outsider_id = random.choice(candidates)
             self.players[self.outsider_id].outsider = "trickster"
-            # Swap two random players' dice (can include self)
+            # Pick two random players whose wake-up times will be swapped
             all_pids = list(self.players.keys())
             swap_pair = random.sample(all_pids, 2)
             p1, p2 = self.players[swap_pair[0]], self.players[swap_pair[1]]
-            # Record original dice before swap
+            # Record swap info (dice values are NOT changed, only wake-up order)
             self.swap_info = {
                 "pid1": swap_pair[0], "pid2": swap_pair[1],
-                "dice1_orig": p1.dice, "dice2_orig": p2.dice,
+                "dice1": p1.dice, "dice2": p2.dice,
             }
-            # Swap actual dice (used for wake order)
-            p1.dice, p2.dice = p2.dice, p1.dice
-            # display_dice stays as original (players think they have original dice)
-            # p1.display_dice and p2.display_dice were set to original values above
+            # No dice swap - players always see their real dice
+            # Wake-up time swap is handled in compute_night_info
 
         elif outsider_type == "drunk":
             # Must be a mouse (not the thief)
@@ -266,6 +275,16 @@ class Room:
             self.outsider_id = random.choice(mouse_ids)
             self.players[self.outsider_id].outsider = "drunk"
 
+        elif outsider_type == "dodobird":
+            # Must be a mouse (not the thief)
+            if not mouse_ids:
+                self.outsider_type = None
+                return
+            self.outsider_id = random.choice(mouse_ids)
+            self.dodobird_id = self.outsider_id
+            self.players[self.outsider_id].role = Role.DODOBIRD
+            self.players[self.outsider_id].outsider = "dodobird"
+
     def compute_night_info(self):
         """Compute night phase info for each player based on dice groups."""
         # Drunk mouse is excluded from dice wake order (sleeps all night)
@@ -274,14 +293,25 @@ class Room:
         poison_pid = self.poison_target_id if self.outsider_type == "ratatouille" else None
         poison_exclude = poison_pid if self.poison_mode == "wrong_time" else None
 
-        # Group players by actual dice value
+        # Build wake_dice map: the dice value that determines when a player wakes up
+        # Normally wake_dice == player.dice, but trickster swaps wake-up times
+        wake_dice: dict[str, int] = {}
+        for pid, player in self.players.items():
+            wake_dice[pid] = player.dice
+        if self.swap_info and self.outsider_type == "trickster":
+            pid1, pid2 = self.swap_info["pid1"], self.swap_info["pid2"]
+            # Swap their wake-up times (use each other's dice for grouping)
+            wake_dice[pid1] = self.swap_info["dice2"]
+            wake_dice[pid2] = self.swap_info["dice1"]
+
+        # Group players by wake_dice value (determines when they wake up)
         dice_groups: dict[int, list[str]] = {}
         for pid, player in self.players.items():
             if pid == drunk_id:
                 continue  # drunk mouse doesn't wake up
             if pid == poison_exclude:
                 continue  # wrong_time: poisoned player grouped separately
-            dice_groups.setdefault(player.dice, []).append(pid)
+            dice_groups.setdefault(wake_dice[pid], []).append(pid)
 
         thief_dice = self.players[self.thief_id].dice
 
@@ -291,15 +321,17 @@ class Room:
             if pid == drunk_id or pid == poison_exclude:
                 continue  # handled separately below
 
-            group = dice_groups.get(player.dice, [])
+            group = dice_groups.get(wake_dice.get(pid, player.dice), [])
             info = {
                 "role": player.role,
-                "dice": player.display_dice,  # show display_dice (may differ if swapped)
+                "dice": player.dice,  # always show real dice
                 "phase": "night",
             }
 
             if player.role == Role.THIEF:
                 self._compute_thief_night_info(pid, player, group, info)
+            elif player.role == Role.DODOBIRD:
+                self._compute_dodobird_night_info(pid, player, group, thief_dice, info)
             else:
                 self._compute_mouse_night_info(pid, player, group, thief_dice, info)
 
@@ -309,7 +341,7 @@ class Room:
                 info["outsider_info"] = "🍳 你是料理鼠王！你的黑暗料理迷惑了一名玩家，但你不知道是谁。"
             elif player.outsider == "trickster":
                 info["outsider"] = "trickster"
-                info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋调换了两名玩家的骰子，但你不知道是谁。"
+                info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋让两名玩家在对方的骰子点数时间醒来，但你不知道是谁。"
                 info["can_peek"] = False  # trickster can never peek
 
             self.night_info[pid] = info
@@ -325,7 +357,7 @@ class Room:
     def _compute_thief_night_info(self, pid: str, player, group: list, info: dict):
         """Compute night info for the real thief."""
         if self.thief_see_all_dice:
-            info["all_dice"] = {p_id: p.display_dice for p_id, p in self.players.items()}
+            info["all_dice"] = {p_id: p.dice for p_id, p in self.players.items()}
             info["message"] = "你是奶酪大盗！你已经偷走了奶酪🧀。你可以查看所有人的骰子点数。"
             info["same_group"] = []
         else:
@@ -343,6 +375,13 @@ class Room:
                 info["message"] = "你是奶酪大盗！你已经偷走了奶酪🧀。你独自睁眼。"
         info["can_choose_accomplice"] = self.can_choose_accomplice()
         info["can_peek"] = False
+
+        # Thief knows who dodobird is (if in play)
+        if self.dodobird_id:
+            dodobird_player = self.players[self.dodobird_id]
+            info["dodobird_id"] = self.dodobird_id
+            info["dodobird_name"] = dodobird_player.name
+            info["message"] += f"\n🐦 呆呆鸟是 {dodobird_player.name}（不能选TA为共犯）"
 
     def _compute_mouse_night_info(self, pid: str, player, group: list, thief_dice: int, info: dict, perceived_dice: int = None):
         """Compute night info for a regular mouse (not drunk).
@@ -397,6 +436,66 @@ class Room:
                 else:
                     info["message"] += "\n✅ 奶酪还在，没有被偷走。"
 
+    def _compute_dodobird_night_info(self, pid: str, player, group: list, thief_dice: int, info: dict, perceived_dice: int = None):
+        """Compute night info for the dodobird (outsider role).
+        Dodobird behaves like a mouse during night but knows the thief and can choose fake accomplice.
+        """
+        if perceived_dice is None:
+            perceived_dice = player.dice
+        same_group_ids = [g for g in group if g != pid]
+        is_alone = len(same_group_ids) == 0
+        thief_in_group = self.thief_id in group
+
+        info["is_dodobird"] = True
+        info["outsider"] = "dodobird"
+
+        # Dodobird knows who the thief is
+        thief_player = self.players[self.thief_id]
+        info["thief_id"] = self.thief_id
+        info["thief_name"] = thief_player.name
+
+        # Dodobird can choose fake accomplice (if accomplice enabled)
+        if self.must_choose_accomplice():
+            info["can_choose_accomplice"] = True
+
+        if is_alone:
+            info["can_peek"] = True
+            info["same_group"] = []
+            info["message"] = f"你是呆呆鸟🐦（外来者）。你独自睁眼。你可以偷看一位玩家的骰子点数。"
+            if thief_dice < perceived_dice:
+                info["cheese_stolen"] = True
+                info["message"] += "\n⚠️ 你发现奶酪已经被偷走了！"
+            else:
+                info["message"] += "\n✅ 奶酪还在，没有被偷走。"
+        else:
+            info["can_peek"] = False
+            group_members = []
+            for gid in same_group_ids:
+                gp = self.players[gid]
+                entry = {"id": gid, "name": gp.name, "avatar": gp.avatar}
+                if gp.role == Role.THIEF:
+                    entry["is_thief"] = True
+                group_members.append(entry)
+            info["same_group"] = group_members
+
+            if thief_in_group:
+                info["thief_spotted"] = True
+                info["spotted_thief_name"] = thief_player.name
+                info["message"] = f"你是呆呆鸟🐦（外来者）。你和其他玩家同时睁眼，你发现 {thief_player.name} 正在偷奶酪！🧀"
+            else:
+                names = "、".join(self.players[gid].name for gid in same_group_ids)
+                info["message"] = f"你是呆呆鸟🐦（外来者）。你和 {names} 同时睁眼了。"
+                if thief_dice < perceived_dice:
+                    info["cheese_stolen"] = True
+                    info["message"] += "\n⚠️ 你们发现奶酪已经被偷走了！"
+                else:
+                    info["message"] += "\n✅ 奶酪还在，没有被偷走。"
+
+        info["message"] += f"\n🔍 你知道奶酪大盗是 {thief_player.name}！"
+        if self.must_choose_accomplice():
+            info["message"] += "\n🤝 你需要选择一名假共犯（不能选大盗），被选中的人会以为是大盗选了TA。"
+        info["message"] += "\n🎯 你的目标：让自己被投票出局即可获胜！"
+
     def _apply_poison_effect(self, dice_groups: dict):
         """Apply poison effect based on poison_mode.
 
@@ -422,6 +521,8 @@ class Room:
 
             if player.role == Role.THIEF:
                 self._compute_thief_night_info(pid, player, virtual_group, info)
+            elif player.role == Role.DODOBIRD:
+                self._compute_dodobird_night_info(pid, player, virtual_group, thief_dice, info, perceived_dice=fake_dice)
             else:
                 self._compute_mouse_night_info(pid, player, virtual_group, thief_dice, info, perceived_dice=fake_dice)
 
@@ -442,6 +543,8 @@ class Room:
 
             if player.role == Role.THIEF:
                 self._compute_thief_night_info(pid, player, virtual_group, info)
+            elif player.role == Role.DODOBIRD:
+                self._compute_dodobird_night_info(pid, player, virtual_group, thief_dice, info, perceived_dice=player.dice)
             else:
                 # wrong_info: wake at correct time, so cheese_stolen uses real dice
                 self._compute_mouse_night_info(pid, player, virtual_group, thief_dice, info, perceived_dice=player.dice)
@@ -449,7 +552,7 @@ class Room:
         # If poisoned player is also an outsider, preserve their outsider info
         if player.outsider == "trickster":
             info["outsider"] = "trickster"
-            info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋调换了两名玩家的骰子，但你不知道是谁。"
+            info["outsider_info"] = "🧸 你是鼠小弟！你的捣蛋让两名玩家在对方的骰子点数时间醒来，但你不知道是谁。"
             info["can_peek"] = False  # trickster can never peek
 
         self.night_info[pid] = info
@@ -508,6 +611,10 @@ class Room:
         if self.accomplice_enabled and self.outsider_type == "drunk" and self.outsider_id:
             if self.drunk_accomplice_id is None:
                 return False
+        # Dodobird must have chosen fake accomplice (if accomplice enabled)
+        if self.must_choose_accomplice() and self.dodobird_id:
+            if self.dodobird_accomplice_id is None:
+                return False
         # All mice that can peek must have peeked
         for pid, night in self.night_info.items():
             if night.get("can_peek") and not night.get("has_peeked"):
@@ -533,6 +640,14 @@ class Room:
             # Drunk mouse must choose their fake accomplice (only if accomplice enabled)
             if self.accomplice_enabled and self.drunk_accomplice_id is None:
                 return False
+        elif player.role == Role.DODOBIRD:
+            # Dodobird must choose fake accomplice (if accomplice enabled)
+            if self.must_choose_accomplice() and self.dodobird_accomplice_id is None:
+                return False
+            # Dodobird also needs to peek if can_peek
+            night = self.night_info.get(player_id, {})
+            if night.get("can_peek") and not night.get("has_peeked"):
+                return False
         else:
             night = self.night_info.get(player_id, {})
             if night.get("can_peek") and not night.get("has_peeked"):
@@ -551,6 +666,9 @@ class Room:
         if target_id == thief_id:
             return False
         if target_id not in self.players:
+            return False
+        # Dodobird cannot be chosen as accomplice
+        if target_id == self.dodobird_id:
             return False
 
         self.thief_raw_accomplice_id = target_id
@@ -617,6 +735,35 @@ class Room:
 
         # Try to resolve if thief already chose drunk mouse
         self._resolve_accomplice()
+        return True
+
+    def dodobird_choose_accomplice(self, dodobird_id: str, target_id: str) -> bool:
+        """Dodobird chooses a fake accomplice. The target will think the real thief chose them."""
+        if dodobird_id != self.dodobird_id:
+            return False
+        if target_id == dodobird_id:
+            return False
+        if target_id not in self.players:
+            return False
+        # Cannot choose the real thief
+        if target_id == self.thief_id:
+            return False
+
+        self.dodobird_accomplice_id = target_id
+
+        # Update dodobird's night_info
+        target = self.players[target_id]
+        if dodobird_id in self.night_info:
+            self.night_info[dodobird_id]["accomplice_id"] = target_id
+            self.night_info[dodobird_id]["accomplice_name"] = target.name
+            self.night_info[dodobird_id]["can_choose_accomplice"] = False
+
+        # Send fake accomplice info to target (showing real thief's identity)
+        # This is handled in main.py handler
+        # Check if target is also thief's real pick (overlap → real accomplice)
+        # This is resolved naturally: if thief already set target as real accomplice,
+        # the fake accomplice notification is redundant but harmless.
+
         return True
 
     def _resolve_accomplice(self):
@@ -730,8 +877,11 @@ class Room:
         # Cannot change vote once cast
         if voter.voted_for is not None:
             return False, "你已经投过票了，不能改票"
-        # Accomplice cannot vote for thief
-        if voter.is_accomplice and target_id == self.thief_id:
+        # Accomplice cannot vote for thief (real or fake accomplice)
+        is_fake_acc = (self.dodobird_accomplice_id
+                       and voter_id == self.dodobird_accomplice_id
+                       and not voter.is_accomplice)
+        if (voter.is_accomplice or is_fake_acc) and target_id == self.thief_id:
             return False, "作为共犯，你不能给奶酪大盗投票"
         voter.voted_for = target_id
         return True, ""
@@ -745,10 +895,18 @@ class Room:
     def build_action_log(self) -> list[dict]:
         """Build a chronological summary of all players' night actions."""
         log = []
-        # Group by actual dice value for ordering
+        # Build wake_dice map (same logic as compute_night_info)
+        wake_dice: dict[str, int] = {}
+        for pid, player in self.players.items():
+            wake_dice[pid] = player.dice
+        if self.swap_info and self.outsider_type == "trickster":
+            pid1, pid2 = self.swap_info["pid1"], self.swap_info["pid2"]
+            wake_dice[pid1] = self.swap_info["dice2"]
+            wake_dice[pid2] = self.swap_info["dice1"]
+        # Group by wake_dice value for ordering (reflects actual wake-up order)
         dice_groups: dict[int, list[str]] = {}
         for pid, player in self.players.items():
-            dice_groups.setdefault(player.dice, []).append(pid)
+            dice_groups.setdefault(wake_dice[pid], []).append(pid)
 
         for dice_val in sorted(dice_groups.keys()):
             pids = dice_groups[dice_val]
@@ -761,6 +919,7 @@ class Room:
                     "avatar": player.avatar,
                     "role": player.role,
                     "dice": player.dice,
+                    "wake_dice": wake_dice[pid],
                     "actions": [],
                 }
                 # Show outsider tag
@@ -769,6 +928,7 @@ class Room:
                         "ratatouille": "🍳 料理鼠王",
                         "trickster": "🧸 鼠小弟",
                         "drunk": "🍺 酒鬼鼠",
+                        "dodobird": "🐦 呆呆鸟",
                     }
                     entry["outsider"] = player.outsider
                     entry["outsider_label"] = outsider_labels.get(player.outsider, player.outsider)
@@ -804,6 +964,28 @@ class Room:
                                 entry["actions"].append("✅ 被真大盗选中，共犯选择生效！")
                         else:
                             entry["actions"].append("❌ 未被真大盗选中，共犯选择未生效")
+                elif player.role == Role.DODOBIRD:
+                    # Dodobird actions (same as mouse but with extra info)
+                    same_group = night.get("same_group", [])
+                    if same_group:
+                        names = "、".join(m["name"] for m in same_group)
+                        entry["actions"].append(f"👀 与 {names} 同时睁眼")
+                        if night.get("thief_spotted"):
+                            entry["actions"].append(f"🚨 发现了大盗 {night.get('spotted_thief_name')}")
+                    if night.get("has_peeked"):
+                        entry["actions"].append(f"🔍 偷看了 {night.get('peek_target_name')} 的骰子: {night.get('peek_result')} 点")
+                    elif night.get("can_peek") and not night.get("has_peeked"):
+                        entry["actions"].append("❌ 未偷看任何人")
+                    if night.get("cheese_stolen"):
+                        entry["actions"].append("⚠️ 发现奶酪被偷")
+                    # Dodobird's fake accomplice choice
+                    if self.dodobird_accomplice_id:
+                        fake_acc = self.players.get(self.dodobird_accomplice_id)
+                        if fake_acc:
+                            if self.dodobird_accomplice_id == self.accomplice_id:
+                                entry["actions"].append(f"🐦🤝 选了 {fake_acc.name} 为假共犯（与大盗同选，实际为真共犯）")
+                            else:
+                                entry["actions"].append(f"🐦🤝 选了 {fake_acc.name} 为假共犯（{fake_acc.name} 以为是大盗选的）")
                 elif player.is_accomplice:
                     thief = self.players.get(self.thief_id)
                     if thief:
@@ -836,7 +1018,7 @@ class Room:
                 elif player.outsider == "trickster" and self.swap_info:
                     p1_name = self.players[self.swap_info['pid1']].name
                     p2_name = self.players[self.swap_info['pid2']].name
-                    entry["actions"].append(f"🧸 调换了 {p1_name} 和 {p2_name} 的骰子")
+                    entry["actions"].append(f"🧸 捣蛋让 {p1_name} 和 {p2_name} 在对方的骰子点数时间醒来")
 
                 # Poison victim tag
                 if pid == self.poison_target_id and self.outsider_type == "ratatouille" and self.poison_fake_dice:
@@ -848,7 +1030,14 @@ class Room:
                 # Swap victim tag
                 if self.swap_info and pid in (self.swap_info['pid1'], self.swap_info['pid2']):
                     if player.outsider != "trickster":  # don't double-tag the trickster
-                        entry["actions"].append(f"🧸 骰子被鼠小弟调换（以为{player.display_dice}点，实际{player.dice}点）")
+                        other_pid = self.swap_info['pid2'] if pid == self.swap_info['pid1'] else self.swap_info['pid1']
+                        other_dice = self.players[other_pid].dice
+                        entry["actions"].append(f"🧸 被鼠小弟捣蛋，在{other_dice}点时醒来（自己骰子{player.dice}点）")
+
+                # Fake accomplice victim tag (chosen by dodobird but not real accomplice)
+                if (self.dodobird_accomplice_id and pid == self.dodobird_accomplice_id
+                        and not player.is_accomplice and player.role != Role.DODOBIRD):
+                    entry["actions"].append("🐦 被呆呆鸟选为假共犯（以为是大盗选的，实际不是真共犯）")
 
                 # Vote info
                 if player.voted_for:
@@ -867,6 +1056,9 @@ class Room:
 
         self.vote_results = tally
 
+        # Determine dodobird win separately
+        dodobird_win = False
+
         if not tally:
             self.voted_player_id = None
             self.winner = "thief"
@@ -875,7 +1067,12 @@ class Room:
             top = [pid for pid, v in tally.items() if v == max_votes]
             self.voted_player_id = top[0]  # tie: first one
 
-            if self.voted_player_id == self.thief_id:
+            # Check if dodobird was voted out
+            if self.dodobird_id and self.voted_player_id == self.dodobird_id:
+                dodobird_win = True
+                # Dodobird voted out: thief wins (mice failed to find real thief)
+                self.winner = "thief"
+            elif self.voted_player_id == self.thief_id:
                 self.winner = "mouse"
             else:
                 self.winner = "thief"
@@ -903,6 +1100,18 @@ class Room:
             result["outsider_type"] = self.outsider_type
             result["outsider_id"] = self.outsider_id
             result["outsider_name"] = outsider_player.name
+        # Include dodobird info in result
+        if self.dodobird_id:
+            dodobird_player = self.players[self.dodobird_id]
+            result["dodobird_id"] = self.dodobird_id
+            result["dodobird_name"] = dodobird_player.name
+            result["dodobird_win"] = dodobird_win
+            if self.dodobird_accomplice_id:
+                fake_acc = self.players[self.dodobird_accomplice_id]
+                result["dodobird_accomplice_id"] = self.dodobird_accomplice_id
+                result["dodobird_accomplice_name"] = fake_acc.name
+                # Is the fake accomplice also the real accomplice?
+                result["dodobird_accomplice_is_real"] = (self.dodobird_accomplice_id == self.accomplice_id)
         # Flag: mutual selection caused no accomplice
         if (self.outsider_type == "drunk"
                 and self.thief_raw_accomplice_id == self.outsider_id
@@ -931,6 +1140,8 @@ class Room:
         self.swap_info = None
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
+        self.dodobird_id = None
+        self.dodobird_accomplice_id = None
         self.player_order = []
         # Move spectators into players (up to max_players)
         for sid, sp in list(self.spectators.items()):
@@ -968,6 +1179,7 @@ class Room:
             "outsider_ratatouille": self.outsider_ratatouille,
             "outsider_trickster": self.outsider_trickster,
             "outsider_drunk": self.outsider_drunk,
+            "outsider_dodobird": self.outsider_dodobird,
             # Outsider game state
             "outsider_type": self.outsider_type,
             "outsider_id": self.outsider_id,
@@ -977,6 +1189,9 @@ class Room:
             "swap_info": self.swap_info,
             "drunk_accomplice_id": self.drunk_accomplice_id,
             "thief_raw_accomplice_id": self.thief_raw_accomplice_id,
+            # Dodobird state
+            "dodobird_id": self.dodobird_id,
+            "dodobird_accomplice_id": self.dodobird_accomplice_id,
             # Players
             "players": {pid: p.serialize() for pid, p in self.players.items()},
             # Spectators
@@ -1009,6 +1224,7 @@ class Room:
         room.outsider_ratatouille = data.get("outsider_ratatouille", False)
         room.outsider_trickster = data.get("outsider_trickster", False)
         room.outsider_drunk = data.get("outsider_drunk", False)
+        room.outsider_dodobird = data.get("outsider_dodobird", False)
         # Outsider game state
         room.outsider_type = data.get("outsider_type")
         room.outsider_id = data.get("outsider_id")
@@ -1018,6 +1234,9 @@ class Room:
         room.swap_info = data.get("swap_info")
         room.drunk_accomplice_id = data.get("drunk_accomplice_id")
         room.thief_raw_accomplice_id = data.get("thief_raw_accomplice_id")
+        # Dodobird state
+        room.dodobird_id = data.get("dodobird_id")
+        room.dodobird_accomplice_id = data.get("dodobird_accomplice_id")
         # Players
         for pid, pdata in data.get("players", {}).items():
             room.players[pid] = Player.deserialize(pdata)
@@ -1085,6 +1304,21 @@ class Room:
                 }
                 if player.outsider == "drunk":
                     my_info["is_drunk"] = True
+                if player.role == Role.DODOBIRD:
+                    my_info["is_dodobird"] = True
+                # Fake accomplice (chosen by dodobird) thinks they're accomplice
+                is_fake_acc = (self.dodobird_accomplice_id
+                               and for_player_id == self.dodobird_accomplice_id
+                               and not player.is_accomplice)
+                if is_fake_acc:
+                    my_info["role"] = Role.ACCOMPLICE  # they think they are accomplice
+                    my_info["is_accomplice"] = True  # they think they are
+                    my_info["is_fake_accomplice"] = True  # for result reveal
+                    # Show thief info so fake accomplice sees it after refresh
+                    thief = self.players[self.thief_id]
+                    my_info["thief_id"] = self.thief_id
+                    my_info["thief_name"] = thief.name
+                    my_info["thief_dice"] = thief.dice
                 if self.phase == GamePhase.NIGHT:
                     night = self.get_player_night_info(for_player_id)
                     my_info.update(night)
@@ -1109,10 +1343,13 @@ class Room:
             data["total_voters"] = sum(1 for p in self.players.values() if p.connected)
 
         if self.phase == GamePhase.VOTING:
-            # Accomplice needs to know thief_id to disable voting
+            # Accomplice (real or fake) needs to know thief_id to disable voting
             if for_player_id:
                 p = self.players.get(for_player_id)
-                if p and p.is_accomplice:
+                is_fake_acc = (self.dodobird_accomplice_id
+                               and for_player_id == self.dodobird_accomplice_id
+                               and not p.is_accomplice)
+                if p and (p.is_accomplice or is_fake_acc):
                     data["no_vote_target"] = self.thief_id
 
         if self.phase == GamePhase.RESULT:
@@ -1122,6 +1359,8 @@ class Room:
             data["thief_id"] = self.thief_id
             data["accomplice_id"] = self.accomplice_id
             data["action_log"] = self.build_action_log()
+            if self.dodobird_id:
+                data["dodobird_id"] = self.dodobird_id
 
         return data
 

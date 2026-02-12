@@ -11,16 +11,18 @@ function DiceIcon({ value, size = 20 }) {
   return Icon ? <Icon size={size} /> : <span>{value}</span>;
 }
 
-function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, onVote, onAccomplice, myVote, canAccomplice, noVoteTarget }) {
+function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, myVote, canAccomplice, canDodobirdAccomplice, noVoteTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
   const OUTSIDER_LABELS = {
     ratatouille: '🍳 料理鼠王',
     trickster: '🧸 鼠小弟',
     drunk: '🍺 酒鬼鼠',
+    dodobird: '🐦 呆呆鸟',
   };
   const roleLabel = {
     thief: '🧀 奶酪大盗',
     mouse: '🐭 瞌睡鼠',
     accomplice: '🤝 共犯',
+    dodobird: '🐦 呆呆鸟',
   };
 
   const isDisconnected = !player.connected;
@@ -59,6 +61,7 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
         <div className={`text-xs px-2 py-0.5 rounded-full ${
           player.role === 'thief' ? 'bg-red-500/30 text-red-300' :
           player.role === 'accomplice' ? 'bg-yellow-500/30 text-yellow-300' :
+          player.role === 'dodobird' ? 'bg-teal-500/30 text-teal-300' :
           'bg-blue-500/30 text-blue-300'
         }`}>
           {roleLabel[player.role] || player.role}
@@ -82,13 +85,23 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, phase, onPeek, 
         </button>
       )}
 
-      {/* Night: Accomplice button for thief */}
-      {phase === 'night' && !isMe && canAccomplice && onAccomplice && (
+      {/* Night: Accomplice button for thief (exclude dodobird) */}
+      {phase === 'night' && !isMe && canAccomplice && onAccomplice && player.id !== excludeAccomplice && (
         <button
           onClick={() => onAccomplice(player.id)}
           className="text-xs px-3 py-1 bg-purple-500/50 text-white rounded-lg hover:bg-purple-500/70 transition flex items-center gap-1"
         >
           <UserPlus size={12} /> 选为共犯
+        </button>
+      )}
+
+      {/* Night: Fake accomplice button for dodobird (exclude thief) */}
+      {phase === 'night' && !isMe && canDodobirdAccomplice && onDodobirdAccomplice && player.id !== excludeDodobirdAccomplice && (
+        <button
+          onClick={() => onDodobirdAccomplice(player.id)}
+          className="text-xs px-3 py-1 bg-teal-500/50 text-white rounded-lg hover:bg-teal-500/70 transition flex items-center gap-1"
+        >
+          <UserPlus size={12} /> 选为假共犯
         </button>
       )}
 
@@ -163,6 +176,10 @@ export default function Room({ ws }) {
     }
   };
 
+  const handleDodobirdAccomplice = (targetId) => {
+    send('dodobird_choose_accomplice', { target_id: targetId });
+  };
+
   const handleNightDone = () => {
     send('night_done', {});
   };
@@ -187,9 +204,11 @@ export default function Room({ ws }) {
   const isMeThief = gameInfo?.role === 'thief' && !isMeDrunk;
   const isMeFakeThief = gameInfo?.role === 'thief' && isMeDrunk;
   const isMeAccomplice = gameInfo?.role === 'accomplice';
+  const isMeDodobird = gameInfo?.is_dodobird || gameInfo?.role === 'dodobird';
   // Bug1: Use can_peek from night_info (respects dice group rule)
   const canPeek = phase === 'night' && gameInfo?.can_peek && !gameInfo?.has_peeked;
   const canAccomplice = phase === 'night' && (isMeThief || isMeFakeThief) && gameInfo?.can_choose_accomplice;
+  const canDodobirdAccomplice = phase === 'night' && isMeDodobird && gameInfo?.can_choose_accomplice;
   const isCreator = playerId === creator_id;
 
   return (
@@ -215,7 +234,7 @@ export default function Room({ ws }) {
               {roomState.outsiders && roomState.outsiders.length > 0 && (
                 <>
                   <span className="mx-1">·</span>
-                  🌟 {roomState.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : '🍺').join('')}
+                  🌟 {roomState.outsiders.map(o => o === 'ratatouille' ? '🍳' : o === 'trickster' ? '🧸' : o === 'drunk' ? '🍺' : o === 'dodobird' ? '🐦' : '').join('')}
                 </>
               )}
             </div>
@@ -300,6 +319,15 @@ export default function Room({ ws }) {
                 />
                 <span className="text-white/70">🍺 酒鬼鼠</span>
               </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.outsiders?.includes('dodobird')}
+                  onChange={(e) => send('update_room_settings', { outsider_dodobird: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🐦 呆呆鸟</span>
+              </label>
             </div>
           </div>
         </div>
@@ -319,15 +347,15 @@ export default function Room({ ws }) {
       {/* Game Info Banner */}
       {!isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
         <div className={`glass-card p-4 ${
-          (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : 'border-blue-500/30'
+          (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : 'border-blue-500/30'
         }`}>
           <div className="flex items-center gap-3">
             <div className="text-4xl">
-              {isMeThief || isMeFakeThief ? '🧀' : isMeAccomplice ? '🤝' : '🐭'}
+              {isMeThief || isMeFakeThief ? '🧀' : isMeAccomplice ? '🤝' : isMeDodobird ? '�' : '�'}
             </div>
             <div className="flex-1">
               <div className="font-bold text-lg">
-                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : '你是瞌睡鼠'}
+                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : isMeDodobird ? <span className="text-teal-400">你是呆呆鸟！</span> : '你是瞌睡鼠'}
               </div>
               <div className="text-sm text-white/60 flex items-center gap-2">
                 你的骰子: <span className="text-cheese-400 font-bold flex items-center gap-1"><DiceIcon value={gameInfo.dice} size={18} /> {gameInfo.dice}点</span>
@@ -385,6 +413,11 @@ export default function Room({ ws }) {
                   你的共犯: {gameInfo.accomplice_name}
                 </div>
               )}
+              {isMeDodobird && gameInfo.accomplice_name && (
+                <div className="text-sm text-teal-300 mt-1">
+                  你选的假共犯: {gameInfo.accomplice_name}
+                </div>
+              )}
             </div>
           </div>
 
@@ -415,15 +448,19 @@ export default function Room({ ws }) {
           roomState.winner === 'mouse' ? 'border-green-500/30' : 'border-red-500/30'
         }`}>
           <div className="text-5xl mb-3">
-            {roomState.winner === 'mouse' ? '🎉' : '😈'}
+            {gameInfo?.result?.dodobird_win ? '🐦' : roomState.winner === 'mouse' ? '🎉' : '😈'}
           </div>
           <div className="text-2xl font-bold mb-2">
-            {roomState.winner === 'mouse' ? '瞌睡鼠胜利！' : '奶酪大盗胜利！'}
+            {gameInfo?.result?.dodobird_win
+              ? '呆呆鸟胜利！'
+              : roomState.winner === 'mouse' ? '瞌睡鼠胜利！' : '奶酪大盗胜利！'}
           </div>
           <div className="text-white/60 mb-2">
-            {roomState.winner === 'mouse'
-              ? '成功找出了奶酪大盗！'
-              : '大盗成功蒙混过关！'}
+            {gameInfo?.result?.dodobird_win
+              ? `呆呆鸟 ${gameInfo.result.dodobird_name} 成功让自己被投票出局！`
+              : roomState.winner === 'mouse'
+                ? '成功找出了奶酪大盗！'
+                : '大盗成功蒙混过关！'}
           </div>
           {gameInfo?.result && (
             <div className="text-sm text-white/50">
@@ -431,6 +468,12 @@ export default function Room({ ws }) {
               {gameInfo.result.accomplice_name
                 ? ` | 共犯: ${gameInfo.result.accomplice_name}`
                 : gameInfo.result.no_accomplice_reason === 'mutual_selection' ? ' | 🍺↔️ 本局无共犯（大盗与酒鬼鼠互选抵消）' : ''}
+              {gameInfo.result.dodobird_name && ` | 🐦 呆呆鸟: ${gameInfo.result.dodobird_name}`}
+              {gameInfo.result.dodobird_accomplice_name && (
+                gameInfo.result.dodobird_accomplice_is_real
+                  ? ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（与大盗同选→真共犯）`
+                  : ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（非真共犯）`
+              )}
             </div>
           )}
         </div>
@@ -446,8 +489,9 @@ export default function Room({ ws }) {
                 thief: 'border-red-500/40 bg-red-500/10',
                 accomplice: 'border-yellow-500/40 bg-yellow-500/10',
                 mouse: 'border-blue-500/40 bg-blue-500/10',
+                dodobird: 'border-teal-500/40 bg-teal-500/10',
               };
-              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
+              const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯', dodobird: '🐦 呆呆鸟' };
               const outsiderLabels = { ratatouille: '🍳 料理鼠王', trickster: '🧸 鼠小弟', drunk: '🍺 酒鬼鼠' };
               const isMyEntry = entry.player_id === playerId;
               return (
@@ -460,8 +504,11 @@ export default function Room({ ws }) {
                     {entry.outsider_label && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{entry.outsider_label}</span>
                     )}
+                    {entry.dodobird_label && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">{entry.dodobird_label}</span>
+                    )}
                     <span className="text-xs text-cheese-400">
-                      (骰子: {entry.dice}点{entry.display_dice != null && entry.display_dice !== entry.dice ? ` ← 以为${entry.display_dice}点` : ''})
+                      (骰子: {entry.dice}点{entry.wake_dice != null && entry.wake_dice !== entry.dice ? ` · 在${entry.wake_dice}点时醒来` : ''}{entry.display_dice != null && entry.display_dice !== entry.dice ? ` ← 以为${entry.display_dice}点` : ''})
                     </span>
                   </div>
                   <div className="pl-8 space-y-0.5">
@@ -500,8 +547,12 @@ export default function Room({ ws }) {
               onPeek={canPeek ? handlePeek : null}
               onVote={phase === 'voting' ? handleVote : null}
               onAccomplice={canAccomplice ? handleAccomplice : null}
+              onDodobirdAccomplice={canDodobirdAccomplice ? handleDodobirdAccomplice : null}
               myVote={me?.voted_for}
               canAccomplice={canAccomplice}
+              canDodobirdAccomplice={canDodobirdAccomplice}
+              excludeAccomplice={gameInfo?.dodobird_id}
+              excludeDodobirdAccomplice={gameInfo?.thief_id}
               noVoteTarget={roomState.no_vote_target}
             />
           ))}

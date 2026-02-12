@@ -17,6 +17,7 @@ class Role(str, Enum):
     THIEF = "thief"
     MOUSE = "mouse"
     ACCOMPLICE = "accomplice"
+    DODOBIRD = "dodobird"
 
 
 AVATARS = [

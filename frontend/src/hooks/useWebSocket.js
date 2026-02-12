@@ -51,10 +51,12 @@ export default function useWebSocket() {
   const [notifications, setNotifications] = useState([]);
   const [screenShake, setScreenShake] = useState(false);
   const [roomList, setRoomList] = useState([]);
+  const [latency, setLatency] = useState(null);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
   const heartbeatTimer = useRef(null);
   const reconnectAttempts = useRef(0);
+  const pingTimestamp = useRef(null);
 
   const addNotification = useCallback((text, type = 'info') => {
     const id = Date.now();
@@ -75,9 +77,10 @@ export default function useWebSocket() {
     stopHeartbeat();
     heartbeatTimer.current = setInterval(() => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
+        pingTimestamp.current = Date.now();
         wsRef.current.send(JSON.stringify({ type: 'ping', data: {} }));
       }
-    }, 25000); // every 25s
+    }, 5000); // every 5s
   }, [stopHeartbeat]);
 
   const connect = useCallback(() => {
@@ -104,6 +107,12 @@ export default function useWebSocket() {
       const msg = JSON.parse(event.data);
       
       switch (msg.type) {
+        case 'pong':
+          if (pingTimestamp.current) {
+            setLatency(Date.now() - pingTimestamp.current);
+            pingTimestamp.current = null;
+          }
+          break;
         case 'connected':
           // If server says we have an active room, request full state
           if (msg.data.room_id) {
@@ -254,6 +263,7 @@ export default function useWebSocket() {
     gameInfo,
     notifications,
     screenShake,
+    latency,
     send,
   };
 }
