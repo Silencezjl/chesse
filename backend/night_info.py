@@ -80,6 +80,68 @@ class NightInfoMixin:
                 "dice1": p1.dice, "dice2": p2.dice,
             }
 
+        elif hex_type in ("retirement_account", "handpicked"):
+            # Only plain mice (白板瞌睡鼠): not thief, not outsider, not accomplice
+            if self.accomplice_enabled:
+                # Delay assignment until after accomplice is chosen
+                self.hex_delayed = True
+            else:
+                # No accomplice concern, assign immediately
+                plain_mice = [pid for pid in self.players
+                              if pid != self.thief_id
+                              and not self.players[pid].outsider
+                              and self.players[pid].role != Role.DODOBIRD]
+                if not plain_mice:
+                    self.hex_type = None
+                    return
+                self.hex_target_id = random.choice(plain_mice)
+                self.players[self.hex_target_id].hex_skill = hex_type
+
+        elif hex_type == "lethal_tempo":
+            # Can be any player (thief or mouse)
+            candidates = list(self.players.keys())
+            self.hex_target_id = random.choice(candidates)
+            self.players[self.hex_target_id].hex_skill = "lethal_tempo"
+
+    def _finalize_delayed_hex_skill(self):
+        """Finalize delayed hex skill assignment after accomplice is chosen.
+        Returns the assigned player_id or None."""
+        if not self.hex_delayed:
+            return None
+        if self.hex_type not in ("retirement_account", "handpicked"):
+            self.hex_delayed = False
+            return None
+        if self.hex_target_id is not None:
+            self.hex_delayed = False
+            return None  # already assigned
+
+        # Find plain mice: not thief, not outsider, not accomplice
+        plain_mice = [pid for pid in self.players
+                      if pid != self.thief_id
+                      and not self.players[pid].outsider
+                      and not self.players[pid].is_accomplice
+                      and self.players[pid].role not in (Role.DODOBIRD, Role.ACCOMPLICE)]
+        if not plain_mice:
+            self.hex_type = None
+            self.hex_delayed = False
+            return None
+
+        self.hex_target_id = random.choice(plain_mice)
+        self.players[self.hex_target_id].hex_skill = self.hex_type
+        self.hex_delayed = False
+
+        # Update night_info for the hex holder
+        pid = self.hex_target_id
+        if pid in self.night_info:
+            hex_descriptions = {
+                "retirement_account": "💰 你被赋予了海克斯科技「退休账户」！每当你获得一票，你投票的对象获得+2票。",
+                "handpicked": "🎯 你被赋予了海克斯科技「精心挑选」！你的投票变为挑选，你无法投票。挑选一名玩家，让TA投票对象获得+2票。",
+            }
+            self.night_info[pid]["hex_skill"] = self.hex_type
+            self.night_info[pid]["hex_skill_info"] = hex_descriptions.get(self.hex_type, "")
+
+        return pid
+
     def compute_night_info(self):
         """Compute night phase info for each player based on dice groups."""
         # Drunk mouse is excluded from dice wake order (sleeps all night)
@@ -137,7 +199,15 @@ class NightInfoMixin:
             elif player.hex_skill == "time_warp":
                 info["hex_skill"] = "time_warp"
                 info["hex_skill_info"] = "⏳ 你被赋予了海克斯科技「时空错乱」！你的能力让两名玩家在对方的骰子点数时间醒来，但你不知道是谁。"
-                info["can_peek"] = False  # time_warp holder can never peek
+            elif player.hex_skill == "retirement_account":
+                info["hex_skill"] = "retirement_account"
+                info["hex_skill_info"] = "💰 你被赋予了海克斯科技「退休账户」！每当你获得一票，你投票的对象获得+2票。"
+            elif player.hex_skill == "lethal_tempo":
+                info["hex_skill"] = "lethal_tempo"
+                info["hex_skill_info"] = f"🎵 你被赋予了海克斯科技「致命节奏」！如果白天讨论时长超过{len(self.players)}分钟（玩家人数），你获得+1票。"
+            elif player.hex_skill == "handpicked":
+                info["hex_skill"] = "handpicked"
+                info["hex_skill_info"] = "🎯 你被赋予了海克斯科技「精心挑选」！你的投票变为挑选，你无法投票。挑选一名玩家，让TA投票对象获得+2票。"
 
             self.night_info[pid] = info
 
@@ -350,7 +420,15 @@ class NightInfoMixin:
         if player.hex_skill == "time_warp":
             info["hex_skill"] = "time_warp"
             info["hex_skill_info"] = "⏳ 你被赋予了海克斯科技「时空错乱」！你的能力让两名玩家在对方的骰子点数时间醒来，但你不知道是谁。"
-            info["can_peek"] = False  # time_warp holder can never peek
+        elif player.hex_skill == "retirement_account":
+            info["hex_skill"] = "retirement_account"
+            info["hex_skill_info"] = "💰 你被赋予了海克斯科技「退休账户」！每当你获得一票，你投票的对象获得+2票。"
+        elif player.hex_skill == "lethal_tempo":
+            info["hex_skill"] = "lethal_tempo"
+            info["hex_skill_info"] = f"🎵 你被赋予了海克斯科技「致命节奏」！如果白天讨论时长超过{len(self.players)}分钟（玩家人数），你获得+1票。"
+        elif player.hex_skill == "handpicked":
+            info["hex_skill"] = "handpicked"
+            info["hex_skill_info"] = "🎯 你被赋予了海克斯科技「精心挑选」！你的投票变为挑选，你无法投票。挑选一名玩家，让TA投票对象获得+2票。"
 
         self.night_info[pid] = info
 

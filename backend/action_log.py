@@ -54,6 +54,9 @@ class ActionLogMixin:
                     hex_labels = {
                         "perception_interference": "🌀 感知干涉",
                         "time_warp": "⏳ 时空错乱",
+                        "retirement_account": "💰 退休账户",
+                        "lethal_tempo": "🎵 致命节奏",
+                        "handpicked": "🎯 精心挑选",
                     }
                     entry["hex_skill"] = player.hex_skill
                     entry["hex_skill_label"] = hex_labels.get(player.hex_skill, player.hex_skill)
@@ -228,3 +231,38 @@ class ActionLogMixin:
             p1_name = self.players[self.swap_info['pid1']].name
             p2_name = self.players[self.swap_info['pid2']].name
             entry["actions"].append(f"⏳ 时空错乱让 {p1_name} 和 {p2_name} 在对方的骰子点数时间醒来")
+        elif player.hex_skill == "retirement_account":
+            if player.voted_for:
+                target = self.players.get(player.voted_for)
+                votes_received = self.vote_results.get(pid, 0)
+                if target and votes_received > 0:
+                    bonus = votes_received * 2
+                    entry["actions"].append(f"💰 退休账户触发：获得{votes_received}票，{target.name} 获得+{bonus}票")
+                else:
+                    entry["actions"].append("💰 退休账户未触发（未获得任何投票）")
+        elif player.hex_skill == "lethal_tempo":
+            threshold = len(self.players)
+            if self.day_start_time:
+                import time as _time
+                day_minutes = (_time.time() - self.day_start_time) / 60.0 if self.day_start_time else 0
+                if day_minutes > threshold:
+                    target = self.players.get(player.voted_for) if player.voted_for else None
+                    target_name = target.name if target else "无"
+                    entry["actions"].append(f"🎵 致命节奏已触发：白天超过 {threshold} 分钟，投票目标 {target_name} 额外+1票")
+                else:
+                    entry["actions"].append(f"🎵 致命节奏未触发：白天未超过 {threshold} 分钟")
+            else:
+                entry["actions"].append(f"🎵 致命节奏：白天阈值 {threshold} 分钟")
+        elif player.hex_skill == "handpicked":
+            if self.handpicked_boost_target_id:
+                boost_target = self.players.get(self.handpicked_boost_target_id)
+                if boost_target and boost_target.voted_for:
+                    vote_dest = self.players.get(boost_target.voted_for)
+                    if vote_dest:
+                        entry["actions"].append(f"🎯 挑选了 {boost_target.name}，{vote_dest.name} 获得+2票")
+                    else:
+                        entry["actions"].append(f"🎯 挑选了 {boost_target.name}")
+                else:
+                    entry["actions"].append(f"🎯 挑选了 {boost_target.name if boost_target else '未知'}")
+            else:
+                entry["actions"].append("🎯 未挑选目标")

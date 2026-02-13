@@ -44,16 +44,22 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         # Hex skill settings (independent of outsiders)
         self.hex_time_warp: bool = False           # 时空错乱 ⏳ (was trickster)
         self.hex_perception_interference: bool = False  # 感知干涉 🌀 (was ratatouille)
+        self.hex_retirement_account: bool = False  # 退休账户 💰
+        self.hex_lethal_tempo: bool = False        # 致命节奏 🎵
+        self.hex_handpicked: bool = False          # 精心挑选 🎯
         # Outsider game state
         self.outsider_type: Optional[str] = None  # "drunk" | "dodobird" | "tom_jerry"
         self.outsider_id: Optional[str] = None    # player id of the outsider (drunk/dodobird only)
         # Hex skill game state
-        self.hex_type: Optional[str] = None       # "time_warp" | "perception_interference"
+        self.hex_type: Optional[str] = None       # "time_warp" | "perception_interference" | "retirement_account" | "lethal_tempo" | "handpicked"
         self.hex_target_id: Optional[str] = None  # player who has the hex skill
         self.poison_target_id: Optional[str] = None  # 感知干涉's poison target
         self.poison_fake_dice: Optional[int] = None    # fake dice value for poisoned player
         self.poison_mode: Optional[str] = None  # "wrong_time" or "wrong_info"
         self.swap_info: Optional[dict] = None     # 时空错乱 swap info {pid1, pid2, dice1, dice2}
+        self.day_start_time: Optional[float] = None  # timestamp when day phase started (for lethal_tempo)
+        self.handpicked_boost_target_id: Optional[str] = None  # who the handpicked player chose to boost
+        self.hex_delayed: bool = False  # True if hex assignment is delayed until after accomplice is chosen
         self.drunk_accomplice_id: Optional[str] = None  # who drunk mouse chose as accomplice
         self.thief_raw_accomplice_id: Optional[str] = None  # who thief initially chose (before resolution)
         self.dodobird_id: Optional[str] = None    # player id of the dodobird
@@ -171,6 +177,9 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         self.poison_fake_dice = None
         self.poison_mode = None
         self.swap_info = None
+        self.day_start_time = None
+        self.handpicked_boost_target_id = None
+        self.hex_delayed = False
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
         self.dodobird_id = None

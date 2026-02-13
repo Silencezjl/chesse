@@ -186,6 +186,12 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
         room.hex_time_warp = bool(data["hex_time_warp"])
     if "hex_perception_interference" in data:
         room.hex_perception_interference = bool(data["hex_perception_interference"])
+    if "hex_retirement_account" in data:
+        room.hex_retirement_account = bool(data["hex_retirement_account"])
+    if "hex_lethal_tempo" in data:
+        room.hex_lethal_tempo = bool(data["hex_lethal_tempo"])
+    if "hex_handpicked" in data:
+        room.hex_handpicked = bool(data["hex_handpicked"])
 
     await ws.send_json({
         "type": "room_created",
@@ -386,6 +392,26 @@ async def _try_notify_accomplices(room: Room):
             })
 
 
+async def _try_send_delayed_hex(room: Room):
+    """If a delayed hex skill was just finalized, send hex info to the assigned player."""
+    hex_pid = room.hex_target_id
+    if not hex_pid:
+        return
+    # Only send if the player has a hex_skill and it's one of the delayed types
+    player = room.players.get(hex_pid)
+    if not player or player.hex_skill not in ("retirement_account", "handpicked"):
+        return
+    # Check if night_info already has hex_skill_info (set by _finalize_delayed_hex_skill)
+    night = room.night_info.get(hex_pid, {})
+    if not night.get("hex_skill_info"):
+        return
+    # Send game_info update to the hex holder
+    await send_to_player(hex_pid, {
+        "type": "game_info",
+        "data": night
+    })
+
+
 async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
     if not room or room.phase != GamePhase.NIGHT:
@@ -409,6 +435,8 @@ async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
         })
 
         await _try_notify_accomplices(room)
+        # Check for delayed hex skill finalization
+        await _try_send_delayed_hex(room)
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
@@ -483,6 +511,8 @@ async def handle_dodobird_choose_accomplice(ws: WebSocket, player_id: str, data:
 
         # Defer notification: _try_notify_accomplices checks if both chose
         await _try_notify_accomplices(room)
+        # Check for delayed hex skill finalization
+        await _try_send_delayed_hex(room)
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为假共犯"}})
@@ -507,9 +537,17 @@ async def handle_night_done(ws: WebSocket, player_id: str, data: dict):
 async def check_night_complete(room: Room):
     if room.all_night_actions_done():
         room.start_day()
+        # Track day start time for lethal_tempo
+        import time as _time
+        room.day_start_time = _time.time()
+        day_data = {"message": "天亮了！大家开始讨论吧。", "discussion_seconds": room.discussion_seconds}
+        # If lethal_tempo is active, include threshold info
+        if room.hex_type == "lethal_tempo":
+            day_data["lethal_tempo_threshold"] = len(room.players)
+            day_data["day_start_time"] = room.day_start_time
         await broadcast_to_room(room, {
             "type": "day_start",
-            "data": {"message": "天亮了！大家开始讨论吧。", "discussion_seconds": room.discussion_seconds}
+            "data": day_data
         })
         await send_room_state(room)
 
@@ -783,7 +821,34 @@ async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict)
         room.hex_time_warp = bool(data["hex_time_warp"])
     if "hex_perception_interference" in data:
         room.hex_perception_interference = bool(data["hex_perception_interference"])
+    if "hex_retirement_account" in data:
+        room.hex_retirement_account = bool(data["hex_retirement_account"])
+    if "hex_lethal_tempo" in data:
+        room.hex_lethal_tempo = bool(data["hex_lethal_tempo"])
+    if "hex_handpicked" in data:
+        room.hex_handpicked = bool(data["hex_handpicked"])
 
+    await send_room_state(room)
+
+
+async def handle_handpicked_choose(ws: WebSocket, player_id: str, data: dict):
+    """精心挑选: hex holder chooses which player to boost during voting."""
+    room = game_manager.find_player_room(player_id)
+    if not room or room.phase != GamePhase.VOTING:
+        return
+    if room.hex_type != "handpicked" or room.hex_target_id != player_id:
+        await ws.send_json({"type": "error", "data": {"message": "你没有精心挑选技能"}})
+        return
+    target_id = data.get("target_id")
+    if not target_id or target_id not in room.players or target_id == player_id:
+        await ws.send_json({"type": "error", "data": {"message": "无效的目标"}})
+        return
+    room.handpicked_boost_target_id = target_id
+    target = room.players[target_id]
+    await ws.send_json({
+        "type": "handpicked_chosen",
+        "data": {"target_id": target_id, "target_name": target.name, "message": f"你选择了 {target.name}，TA的投票对象将获得+2票"}
+    })
     await send_room_state(room)
 
 
@@ -799,6 +864,7 @@ MESSAGE_HANDLERS = {
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,
+    "handpicked_choose": handle_handpicked_choose,
     "assassinate": handle_assassinate,
     "new_game": handle_new_game,
     "update_room_settings": handle_update_room_settings,

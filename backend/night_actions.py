@@ -131,6 +131,9 @@ class NightActionsMixin:
         if self.outsider_type == "tom_jerry":
             self._assign_tom_jerry_roles(target_id)
 
+        # Finalize delayed hex skill now that accomplice is known
+        self._finalize_delayed_hex_skill()
+
         return True
 
     def drunk_choose_accomplice(self, drunk_id: str, target_id: str) -> bool:
@@ -261,7 +264,9 @@ class NightActionsMixin:
         real_accomplice_id = self.drunk_accomplice_id
         # Edge case: drunk mouse picked the real thief - can't make thief their own accomplice
         if real_accomplice_id == self.thief_id:
-            return  # no accomplice created, but both have made their choices
+            # No accomplice created, but both have made their choices
+            self._finalize_delayed_hex_skill()
+            return
 
         self.accomplice_id = real_accomplice_id
         self.players[real_accomplice_id].is_accomplice = True
@@ -279,6 +284,9 @@ class NightActionsMixin:
                 "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）",
             })
 
+        # Finalize delayed hex skill now that accomplice is resolved
+        self._finalize_delayed_hex_skill()
+
     def peek_dice(self, player_id: str, target_id: str) -> Optional[int]:
         player = self.players.get(player_id)
         if not player:
@@ -287,7 +295,7 @@ class NightActionsMixin:
             return None
         # Check can_peek from night_info (dice group rule)
         night = self.night_info.get(player_id, {})
-        if not night.get("can_peek"):
+        if not night.get("can_peek") and player.role != Role.JERRY:
             return None
         if player.has_peeked:
             return None
@@ -295,9 +303,6 @@ class NightActionsMixin:
             return None
 
         target = self.players[target_id]
-        # Jerry cannot peek (they already know all dice)
-        if player.role == Role.JERRY:
-            return None
         # Determine peek result based on poison mode
         if night.get("poison_wrong_info"):
             # wrong_info mode: player wakes at correct time but gets fake peek result

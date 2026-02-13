@@ -6,12 +6,69 @@ import {
 
 const DICE_ICONS = [null, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
 
+const ROLE_CARD_IMAGES = {
+  thief: new URL('../assets/processed/thief.png', import.meta.url).href,
+  mouse: new URL('../assets/processed/mouse_1.png', import.meta.url).href,
+  accomplice: new URL('../assets/processed/mouse_2.png', import.meta.url).href,
+  dodobird: new URL('../assets/processed/dodo.png', import.meta.url).href,
+  drunk: new URL('../assets/processed/drink.png', import.meta.url).href,
+  tom: new URL('../assets/processed/tom.png', import.meta.url).href,
+  jerry: new URL('../assets/processed/jerry.png', import.meta.url).href,
+};
+
+const HEX_SKILL_IMAGES = {
+  time_warp: new URL('../assets/hex_svg/hex_time_warp.svg', import.meta.url).href,
+  perception_interference: new URL('../assets/hex_svg/hex_perception_interference.svg', import.meta.url).href,
+  retirement_account: new URL('../assets/hex_svg/hex_retirement_account.svg', import.meta.url).href,
+  lethal_tempo: new URL('../assets/hex_svg/hex_lethal_tempo.svg', import.meta.url).href,
+  handpicked: new URL('../assets/hex_svg/hex_handpicked.svg', import.meta.url).href,
+};
+
+const HEX_SKILL_IMAGES_NF = {
+  time_warp: new URL('../assets/hex_svg/hex_time_warp_nf.svg', import.meta.url).href,
+  perception_interference: new URL('../assets/hex_svg/hex_perception_interference_nf.svg', import.meta.url).href,
+  retirement_account: new URL('../assets/hex_svg/hex_retirement_account_nf.svg', import.meta.url).href,
+  lethal_tempo: new URL('../assets/hex_svg/hex_lethal_tempo_nf.svg', import.meta.url).href,
+  handpicked: new URL('../assets/hex_svg/hex_handpicked_nf.svg', import.meta.url).href,
+};
+
+function resolveActionRoleCard(entry) {
+  if (entry.outsider && ROLE_CARD_IMAGES[entry.outsider]) {
+    return ROLE_CARD_IMAGES[entry.outsider];
+  }
+  if (entry.role === 'thief') return ROLE_CARD_IMAGES.thief;
+  if (entry.role === 'accomplice') return ROLE_CARD_IMAGES.accomplice;
+  return ROLE_CARD_IMAGES.mouse;
+}
+
 function DiceIcon({ value, size = 20 }) {
   const Icon = DICE_ICONS[value];
   return Icon ? <Icon size={size} /> : <span>{value}</span>;
 }
 
-function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, onAssassinate, myVote, canAccomplice, canDodobirdAccomplice, canAssassinate, noVoteTarget, voteOnlyTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
+function LethalTempoCountdown({ startTime, threshold }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const update = () => setElapsed((Date.now() / 1000 - startTime));
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [startTime]);
+  const thresholdSec = threshold * 60;
+  const remaining = Math.max(0, Math.ceil(thresholdSec - elapsed));
+  const triggered = elapsed >= thresholdSec;
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  return (
+    <div className={`text-sm font-bold tabular-nums px-3 py-1 rounded-lg ${triggered ? 'text-red-200 bg-red-600/40 animate-pulse' : 'text-amber-100 bg-amber-600/30'}`}>
+      🎵 致命节奏 {triggered
+        ? '已触发！你+1票'
+        : `${mins}:${secs.toString().padStart(2, '0')} 后触发`}
+    </div>
+  );
+}
+
+function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase, onPeek, onVote, onAccomplice, onDodobirdAccomplice, onAssassinate, onHandpickedChoose, myVote, canAccomplice, canDodobirdAccomplice, canAssassinate, isHandpicked, handpickedBoostTargetId, noVoteTarget, voteOnlyTarget, noAssassinateTarget, excludeAccomplice, excludeDodobirdAccomplice }) {
   const OUTSIDER_LABELS = {
     drunk: '🍺 酒鬼鼠',
     dodobird: '🐦 呆呆鸟',
@@ -21,6 +78,9 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
   const HEX_LABELS = {
     time_warp: '⏳ 时空错乱',
     perception_interference: '🌀 感知干涉',
+    retirement_account: '💰 退休账户',
+    lethal_tempo: '🎵 致命节奏',
+    handpicked: '🎯 精心挑选',
   };
   const roleLabel = {
     thief: '🧀 奶酪大盗',
@@ -61,10 +121,10 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
 
       {/* Show role & dice only in result phase */}
       {phase === 'result' && player.role && (
-        <div className={`text-xs px-2 py-0.5 rounded-full ${
-          player.role === 'thief' ? 'bg-red-500/30 text-red-300' :
-          player.role === 'accomplice' ? 'bg-yellow-500/30 text-yellow-300' :
-          'bg-blue-500/30 text-blue-300'
+        <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+          player.role === 'thief' ? 'bg-red-500 text-white' :
+          player.role === 'accomplice' ? 'bg-yellow-400 text-yellow-900' :
+          'bg-slate-200 text-slate-700'
         }`}>
           {roleLabel[player.role] || player.role}
           {player.dice > 0 && ` ${player.dice}点`}
@@ -72,13 +132,13 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
       )}
       {/* Show outsider tag only in result phase */}
       {phase === 'result' && player.outsider && (
-        <div className="text-xs px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-300">
+        <div className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">
           {OUTSIDER_LABELS[player.outsider] || player.outsider}
         </div>
       )}
       {/* Show hex skill tag only in result phase */}
       {phase === 'result' && player.hex_skill && (
-        <div className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-300">
+        <div className="text-xs px-2 py-0.5 rounded-full bg-amber-400 text-amber-900 font-medium">
           {HEX_LABELS[player.hex_skill] || player.hex_skill}
         </div>
       )}
@@ -114,7 +174,7 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
       )}
 
       {/* Assassinate button for Tom (unified: works in any phase when canAssassinate, or in assassinate phase) */}
-      {((canAssassinate && phase !== 'assassinate') || (phase === 'assassinate' && isMeTom)) && !isMe && onAssassinate && player.id !== noVoteTarget && (
+      {((canAssassinate && phase !== 'assassinate') || (phase === 'assassinate' && isMeTom)) && !isMe && onAssassinate && player.id !== noVoteTarget && player.id !== noAssassinateTarget && (
         <button
           onClick={() => onAssassinate(player.id)}
           className={`text-xs px-3 py-1 text-white rounded-lg transition flex items-center gap-1 ${
@@ -125,8 +185,8 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
         </button>
       )}
 
-      {/* Voting: Vote button */}
-      {phase === 'voting' && !isMe && (() => {
+      {/* Voting: Vote button (hidden for handpicked player - they only pick) */}
+      {phase === 'voting' && !isMe && !isHandpicked && (() => {
         const blocked = player.id === noVoteTarget || (voteOnlyTarget && player.id !== voteOnlyTarget);
         if (blocked) return <span className="text-xs text-white/30 py-1">不可投票</span>;
         return myVote ? (
@@ -146,6 +206,22 @@ function PlayerCard({ player, index, isMe, isCreator, isMeThief, isMeTom, phase,
           )
         );
       })()}
+
+      {/* Handpicked: Choose boost target during voting */}
+      {phase === 'voting' && !isMe && isHandpicked && onHandpickedChoose && (
+        handpickedBoostTargetId === player.id ? (
+          <span className="text-xs py-1 px-3 rounded-lg bg-amber-500/60 text-white font-medium flex items-center gap-1">
+            🎯 已挑选
+          </span>
+        ) : !handpickedBoostTargetId ? (
+          <button
+            onClick={() => onHandpickedChoose(player.id)}
+            className="text-xs py-1 px-3 rounded-lg transition flex items-center gap-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 font-medium"
+          >
+            🎯 挑选
+          </button>
+        ) : null
+      )}
 
       {/* Result: Vote count */}
       {phase === 'result' && player.vote_count > 0 && (
@@ -246,6 +322,10 @@ export default function Room({ ws }) {
     send('vote', { target_id: targetId });
   };
 
+  const handleHandpickedChoose = (targetId) => {
+    send('handpicked_choose', { target_id: targetId });
+  };
+
   const handleNewGame = () => {
     send('new_game', {});
   };
@@ -275,11 +355,40 @@ export default function Room({ ws }) {
   const isMeTom = gameInfo?.is_tom || roomState?.is_tom;
   const isMeJerry = gameInfo?.is_jerry || gameInfo?.role === 'jerry';
   // Bug1: Use can_peek from night_info (respects dice group rule)
-  const canPeek = phase === 'night' && gameInfo?.can_peek && !gameInfo?.has_peeked;
+  const canPeek = phase === 'night' && !gameInfo?.has_peeked && (gameInfo?.can_peek || isMeJerry);
   const canAccomplice = phase === 'night' && (isMeThief || isMeFakeThief) && gameInfo?.can_choose_accomplice;
   const canDodobirdAccomplice = phase === 'night' && isMeDodobird && gameInfo?.can_choose_accomplice;
   const canAssassinate = isMeTom && (gameInfo?.can_assassinate || roomState?.can_assassinate);
   const isCreator = playerId === creator_id;
+  const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isBrightPhase = phase === 'day' || phase === 'voting' || phase === 'assassinate';
+  const infoTitleClass = isBrightPhase ? 'text-slate-900' : 'text-white';
+  const infoTextClass = isBrightPhase ? 'text-slate-800' : 'text-white/85';
+  const infoMutedClass = isBrightPhase ? 'text-slate-700' : 'text-white/70';
+  const infoSoftClass = isBrightPhase ? 'text-slate-600' : 'text-white/55';
+  const infoPanelClass = isBrightPhase ? 'bg-black/5 border border-black/10' : 'bg-black/20 border border-white/10';
+  const infoChipClass = isBrightPhase ? 'bg-black/10 text-slate-800' : 'bg-white/10 text-white/85';
+  const groupLabelClass = isBrightPhase ? 'text-slate-700' : 'text-white/60';
+  const groupMouseBadgeClass = isBrightPhase ? 'bg-black/10 text-slate-800' : 'bg-white/10 text-white/90';
+  const groupThiefBadgeClass = isBrightPhase ? 'bg-red-500/15 text-red-700' : 'bg-red-500/30 text-red-200';
+  const roleEvilClass = isBrightPhase ? 'text-red-600' : 'text-red-400';
+  const roleGoodClass = isBrightPhase ? 'text-emerald-700' : 'text-emerald-300';
+  const tomHintClass = isBrightPhase ? 'text-red-700' : 'text-red-300';
+  const diceValueClass = isBrightPhase ? 'text-amber-700' : 'text-cheese-300';
+  const safariSvgStyle = isSafari
+    ? { WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }
+    : undefined;
+
+  const myRoleCardImage =
+    (isMeThief || isMeFakeThief) ? ROLE_CARD_IMAGES.thief :
+    isMeTom ? ROLE_CARD_IMAGES.tom :
+    isMeAccomplice ? ROLE_CARD_IMAGES.accomplice :
+    isMeDodobird ? ROLE_CARD_IMAGES.dodobird :
+    isMeJerry ? ROLE_CARD_IMAGES.jerry :
+    ROLE_CARD_IMAGES.mouse;
+
+  const hexImages = isSafari ? HEX_SKILL_IMAGES_NF : HEX_SKILL_IMAGES;
+  const myHexSkillImage = gameInfo?.hex_skill ? hexImages[gameInfo.hex_skill] : null;
 
   return (
     <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
@@ -310,7 +419,7 @@ export default function Room({ ws }) {
               {roomState.hex_skills && roomState.hex_skills.length > 0 && (
                 <>
                   <span className="mx-1">·</span>
-                  ⚡ {roomState.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : '').join('')}
+                  ⏳ {roomState.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : h === 'retirement_account' ? '💰' : h === 'lethal_tempo' ? '🎵' : h === 'handpicked' ? '🎯' : '').join('')}
                 </>
               )}
             </div>
@@ -322,10 +431,10 @@ export default function Room({ ws }) {
           <div className={`px-3 py-1 rounded-full text-sm font-medium ${
             phase === 'waiting' ? 'bg-blue-500/30 text-blue-300' :
             phase === 'night' ? 'bg-indigo-500/30 text-indigo-300' :
-            phase === 'day' ? 'bg-amber-600/30 text-amber-800' :
+            phase === 'day' ? 'bg-amber-500/30 text-amber-200' :
             phase === 'voting' ? 'bg-red-500/30 text-red-300' :
             phase === 'assassinate' ? 'bg-red-700/30 text-red-400' :
-            'bg-emerald-600/30 text-emerald-800'
+            'bg-emerald-500/30 text-emerald-200'
           }`}>
             {phase === 'waiting' && '⏳ 等待中'}
             {phase === 'night' && '🌙 夜晚'}
@@ -418,6 +527,33 @@ export default function Room({ ws }) {
                 />
                 <span className="text-white/70">🌀 感知干涉</span>
               </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.hex_skills?.includes('retirement_account')}
+                  onChange={(e) => send('update_room_settings', { hex_retirement_account: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">💰 退休账户</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.hex_skills?.includes('lethal_tempo')}
+                  onChange={(e) => send('update_room_settings', { hex_lethal_tempo: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🎵 致命节奏</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={roomState.hex_skills?.includes('handpicked')}
+                  onChange={(e) => send('update_room_settings', { hex_handpicked: e.target.checked })}
+                  className="accent-cheese-400"
+                />
+                <span className="text-white/70">🎯 精心挑选</span>
+              </label>
             </div>
           </div>
         </div>
@@ -439,21 +575,26 @@ export default function Room({ ws }) {
         <div className={`glass-card p-4 ${
           (isMeThief || isMeFakeThief) ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : isMeJerry ? 'border-emerald-500/30' : isMeTom ? 'border-red-700/30' : 'border-blue-500/30'
         }`}>
-          <div className="flex items-center gap-3">
-            <div className="text-4xl">
-              {isMeThief || isMeFakeThief ? '🧀' : isMeTom ? '🐱' : isMeAccomplice ? '🤝' : isMeDodobird ? '🐦' : isMeJerry ? '🐭' : '🐭'}
+          <div className="flex items-start gap-3 md:gap-4">
+            <div className="w-[84px] h-[120px] md:w-[112px] md:h-[160px] shrink-0">
+              <img
+                src={myRoleCardImage}
+                alt="角色卡牌"
+                className="w-full h-full object-cover object-center rounded-[9px] shadow-lg shadow-black/30"
+                loading="lazy"
+              />
             </div>
             <div className="flex-1">
-              <div className="font-bold text-lg">
-                {isMeThief || isMeFakeThief ? <span className="text-red-400">你是奶酪大盗！</span> : isMeTom ? <span className="text-red-400">你是共犯 / Tom（刺客）！</span> : isMeAccomplice ? <span className="text-red-400">你是共犯！</span> : isMeDodobird ? <span className="text-teal-400">你是呆呆鸟！</span> : isMeJerry ? <span className="text-emerald-400">你是 Jerry（先知）！</span> : '你是瞌睡鼠'}
+              <div className={`font-bold text-lg ${infoTitleClass}`}>
+                {isMeThief || isMeFakeThief ? <span className={roleEvilClass}>你是奶酪大盗！</span> : isMeTom ? <span className={roleEvilClass}>你是共犯 / Tom（刺客）！</span> : isMeAccomplice ? <span className={roleEvilClass}>你是共犯！</span> : isMeDodobird ? <span className={roleGoodClass}>你是呆呆鸟！</span> : isMeJerry ? <span className={roleGoodClass}>你是 Jerry（先知）！</span> : '你是瞌睡鼠'}
               </div>
-              <div className="text-sm text-white/60 flex items-center gap-2">
-                你的骰子: <span className="text-cheese-400 font-bold flex items-center gap-1"><DiceIcon value={gameInfo.dice} size={18} /> {gameInfo.dice}点</span>
+              <div className={`text-sm flex items-center gap-2 ${infoMutedClass}`}>
+                你的骰子: <span className={`font-bold flex items-center gap-1 ${diceValueClass}`}><DiceIcon value={gameInfo.dice} size={18} /> {gameInfo.dice}点</span>
               </div>
 
               {/* Night message from server (includes group/cheese/thief info) */}
               {gameInfo.message && (
-                <div className="text-sm mt-1 whitespace-pre-line text-white/80">
+                <div className={`text-sm mt-1 whitespace-pre-line ${infoTextClass}`}>
                   {gameInfo.message}
                 </div>
               )}
@@ -461,10 +602,10 @@ export default function Room({ ws }) {
               {/* Same group members */}
               {gameInfo.same_group && gameInfo.same_group.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="text-xs text-white/50">同时睁眼：</span>
+                  <span className={`text-xs ${groupLabelClass}`}>同时睁眼：</span>
                   {gameInfo.same_group.map((m) => (
                     <span key={m.id} className={`text-xs px-2 py-0.5 rounded-full ${
-                      m.is_thief ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'
+                      m.is_thief ? groupThiefBadgeClass : groupMouseBadgeClass
                     }`}>
                       {m.avatar} {m.name} {m.is_thief ? '(大盗!)' : '(好老鼠)'}
                     </span>
@@ -474,76 +615,97 @@ export default function Room({ ws }) {
 
               {/* Peek result */}
               {gameInfo.has_peeked && gameInfo.peek_target_name && (
-                <div className="text-sm text-green-300 mt-1">
+                <div className={`text-sm mt-1 ${infoTextClass}`}>
                   🔍 你偷看了 {gameInfo.peek_target_name} 的骰子: <strong>{gameInfo.peek_result}</strong> 点
                 </div>
               )}
               {/* Also support old peek format */}
               {gameInfo.peek && !gameInfo.has_peeked && (
-                <div className="text-sm text-green-300 mt-1">
+                <div className={`text-sm mt-1 ${infoTextClass}`}>
                   🔍 你偷看了 {gameInfo.peek.target_name} 的骰子: <strong>{gameInfo.peek.dice}</strong> 点
                 </div>
               )}
 
               {/* Jerry's special message */}
               {gameInfo.jerry_message && (
-                <div className="text-sm text-emerald-300 mt-1 whitespace-pre-line">
-                  {gameInfo.jerry_message}
-                </div>
+                isMeJerry && gameInfo.thief_name ? (
+                  <div className="mt-1 space-y-1">
+                    <div className={`text-sm ${infoTextClass}`}>🐭 你是 Jerry！你知道所有人的骰子点数。</div>
+                    <div className="text-sm text-red-300 font-bold">🚨 {gameInfo.thief_name} 是奶酪大盗🧀</div>
+                    <div className={`text-sm ${infoMutedClass}`}>⚠️ 但要小心隐藏身份，不要被 Tom（刺客）发现！</div>
+                  </div>
+                ) : (
+                  <div className={`text-sm mt-1 whitespace-pre-line ${infoTextClass}`}>
+                    {gameInfo.jerry_message}
+                  </div>
+                )
               )}
 
               {/* Outsider info */}
               {gameInfo.outsider_info && (
-                <div className="text-sm text-purple-300 mt-1 whitespace-pre-line">
+                <div className={`text-sm mt-1 whitespace-pre-line ${infoTextClass}`}>
                   {gameInfo.outsider_info}
                 </div>
               )}
 
               {/* Hex skill info */}
               {gameInfo.hex_skill_info && (
-                <div className="text-sm text-cyan-300 mt-1 whitespace-pre-line">
+                <div className={`text-sm mt-1 whitespace-pre-line font-medium ${infoTextClass}`}>
                   {gameInfo.hex_skill_info}
                 </div>
               )}
 
               {/* Tom assassination hint */}
               {isMeTom && canAssassinate && phase !== 'assassinate' && (
-                <div className="text-sm text-red-400 mt-1">
+                <div className={`text-sm font-semibold mt-1 ${tomHintClass}`}>
                   🗡️ 你可以在任意时刻刺杀一名玩家，若命中 Jerry 则大盗阵营直接获胜！（点击玩家卡片上的「刺杀」按钮）
                 </div>
               )}
 
               {/* Accomplice info */}
               {isMeAccomplice && gameInfo.thief_name && (
-                <div className="text-sm text-yellow-300 mt-1">
+                <div className={`text-sm mt-1 ${infoTextClass}`}>
                   大盗是 {gameInfo.thief_name}，骰子 {gameInfo.thief_dice} 点
                 </div>
               )}
               {(isMeThief || isMeFakeThief) && gameInfo.accomplice_name && (
-                <div className="text-sm text-purple-300 mt-1">
+                <div className={`text-sm mt-1 ${infoTextClass}`}>
                   你的共犯: {gameInfo.accomplice_name}
                 </div>
               )}
               {isMeDodobird && gameInfo.accomplice_name && (
-                <div className="text-sm text-teal-300 mt-1">
+                <div className={`text-sm mt-1 ${infoTextClass}`}>
                   你选的假共犯: {gameInfo.accomplice_name}
                 </div>
               )}
             </div>
+
+            {myHexSkillImage && (
+              <div className="w-28 h-28 md:w-32 md:h-32 shrink-0 ml-auto">
+                <img
+                  src={myHexSkillImage}
+                  alt="海克斯技能"
+                  className="w-full h-full object-contain object-center"
+                  style={safariSvgStyle}
+                  loading="eager"
+                  decoding="sync"
+                />
+              </div>
+            )}
           </div>
 
           {/* All dice overview: Thief, drunk mouse (fake thief), Jerry, or Dodobird */}
           {(isMeThief || isMeFakeThief || isMeJerry || isMeDodobird) && gameInfo.all_dice && (
-            <div className="mt-3 p-3 bg-black/20 rounded-lg">
-              <div className="text-xs text-white/50 mb-2">所有玩家骰子点数：</div>
+            <div className={`mt-3 p-3 rounded-lg ${infoPanelClass}`}>
+              <div className={`text-xs mb-2 ${infoSoftClass}`}>所有玩家骰子点数：</div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(gameInfo.all_dice).map(([pid, dice]) => {
                   const p = players[pid];
                   return (
-                    <div key={pid} className="flex items-center gap-1 bg-white/10 px-2 py-1 rounded text-sm">
+                    <div key={pid} className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${infoChipClass}`}>
                       <span>{p?.avatar}</span>
-                      <span className="text-white/70">{p?.name}</span>
-                      <span className="text-cheese-400 font-bold">{dice}</span>
+                      <span className={infoMutedClass}>{p?.name}</span>
+                      <span className={`font-bold ${diceValueClass}`}>{dice}</span>
                     </div>
                   );
                 })}
@@ -626,7 +788,7 @@ export default function Room({ ws }) {
               )}
               {gameInfo.result.tom_name && ` | 🐱 Tom: ${gameInfo.result.tom_name}`}
               {gameInfo.result.jerry_name && ` | 🐭 Jerry: ${gameInfo.result.jerry_name}`}
-              {gameInfo.result.hex_type && gameInfo.result.hex_target_name && ` | ⚡ ${gameInfo.result.hex_type === 'time_warp' ? '⏳时空错乱' : '🌀感知干涉'}: ${gameInfo.result.hex_target_name}`}
+              {gameInfo.result.hex_type && gameInfo.result.hex_target_name && ` | ⚡ ${{time_warp: '⏳时空错乱', perception_interference: '🌀感知干涉', retirement_account: '💰退休账户', lethal_tempo: '🎵致命节奏', handpicked: '🎯精心挑选'}[gameInfo.result.hex_type] || gameInfo.result.hex_type}: ${gameInfo.result.hex_target_name}`}
             </div>
           )}
         </div>
@@ -634,7 +796,10 @@ export default function Room({ ws }) {
 
       {/* Action Log */}
       {phase === 'result' && roomState.action_log && (
-        <div className="glass-card p-4">
+        <div
+          className="glass-card p-4"
+          style={isSafari ? { WebkitBackdropFilter: 'none', backdropFilter: 'none' } : undefined}
+        >
           <div className="text-sm font-bold text-white/70 mb-3">📜 行动过程公示</div>
           <div className="space-y-3">
             {roomState.action_log.map((entry) => {
@@ -645,32 +810,68 @@ export default function Room({ ws }) {
               };
               const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
               const isMyEntry = entry.player_id === playerId;
+              const finalVotes = roomState.vote_results?.[entry.player_id] || 0;
+              const roleCardImage = resolveActionRoleCard(entry);
+              const hexCardImage = entry.hex_skill ? hexImages[entry.hex_skill] : null;
               return (
                 <div key={entry.player_id} className={`border rounded-lg p-3 relative ${roleColors[entry.role] || roleColors.mouse} ${isMyEntry ? 'ring-2 ring-cheese-400 bg-cheese-400/10' : ''}`}>
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-xl">{entry.avatar}</span>
-                    <span className="font-medium">{entry.name}</span>
-                    {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{roleLabels[entry.role] || entry.role}</span>
-                    {entry.outsider_label && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{entry.outsider_label}</span>
-                    )}
-                    {entry.hex_skill_label && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300">{entry.hex_skill_label}</span>
-                    )}
-                    {entry.dodobird_label && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">{entry.dodobird_label}</span>
-                    )}
-                    <span className="text-xs text-cheese-400">
-                      (骰子: {entry.dice}点{entry.wake_dice != null && entry.wake_dice !== entry.dice ? ` · 在${entry.wake_dice}点时醒来` : ''}{entry.display_dice != null && entry.display_dice !== entry.dice ? ` ← 以为${entry.display_dice}点` : ''})
-                    </span>
-                  </div>
-                  <div className="pl-8 space-y-0.5">
-                    {entry.actions.map((action, i) => (
-                      <div key={i} className="text-sm text-white/70">{action}</div>
-                    ))}
-                    {entry.actions.length === 0 && (
-                      <div className="text-sm text-white/30">无特殊行动</div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-[84px] md:w-[112px] shrink-0 flex flex-col items-center gap-1.5">
+                      <img
+                        src={roleCardImage}
+                        alt={`${entry.name}角色卡牌`}
+                        className="w-full h-auto object-contain object-center rounded-[9px] shadow-md shadow-black/30"
+                        loading="lazy"
+                      />
+                      <div className="w-full flex flex-col items-center gap-1">
+                        <span className={`text-[10px] md:text-[11px] px-2 py-0.5 rounded-full font-medium ${entry.role === 'thief' ? 'bg-red-500 text-white' : entry.role === 'accomplice' ? 'bg-yellow-400 text-yellow-900' : 'bg-slate-200 text-slate-700'}`}>
+                          {roleLabels[entry.role] || entry.role}
+                        </span>
+                        <span className="text-[11px] md:text-xs text-cheese-300 font-medium">🎲 {entry.dice}点</span>
+                        <span className="text-[11px] md:text-xs text-red-300 font-medium">🗳️ {finalVotes} 票</span>
+                        {(entry.wake_dice != null && entry.wake_dice !== entry.dice) && (
+                          <span className="text-[10px] text-white/60 text-center leading-tight">在 {entry.wake_dice} 点时醒来</span>
+                        )}
+                        {(entry.display_dice != null && entry.display_dice !== entry.dice) && (
+                          <span className="text-[10px] text-white/60 text-center leading-tight">以为是 {entry.display_dice} 点</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-lg leading-none">{entry.avatar}</span>
+                        <span className="font-medium break-all">{entry.name}</span>
+                        {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
+                        {entry.outsider_label && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">{entry.outsider_label}</span>
+                        )}
+                        {entry.dodobird_label && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">{entry.dodobird_label}</span>
+                        )}
+                      </div>
+
+                      <div className="space-y-0.5">
+                        {entry.actions.map((action, i) => (
+                          <div key={i} className="text-sm text-white/70">{action}</div>
+                        ))}
+                        {entry.actions.length === 0 && (
+                          <div className="text-sm text-white/30">无特殊行动</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {hexCardImage && (
+                      <div className="w-[78px] h-[78px] md:w-[90px] md:h-[90px] shrink-0 ml-1 md:ml-2">
+                        <img
+                          src={hexCardImage}
+                          alt={`${entry.name}海克斯技能`}
+                          className="w-full h-full object-contain object-center"
+                          style={safariSvgStyle}
+                          loading={isSafari ? 'eager' : 'lazy'}
+                          decoding={isSafari ? 'sync' : 'async'}
+                        />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -681,41 +882,47 @@ export default function Room({ ws }) {
       )}
 
       {/* Players Grid */}
-      <div>
-        <div className="text-sm text-white/50 mb-2 flex items-center gap-1">
-          <Users size={14} /> 玩家列表
+      {phase !== 'result' && (
+        <div>
+          <div className="text-sm text-white/50 mb-2 flex items-center gap-1">
+            <Users size={14} /> 玩家列表
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {playerList.map((p, i) => (
+              <PlayerCard
+                key={p.id}
+                player={{
+                  ...p,
+                  vote_count: roomState.vote_results?.[p.id] || 0,
+                }}
+                index={i + 1}
+                isMe={p.id === playerId}
+                isCreator={p.id === creator_id}
+                isMeThief={isMeThief}
+                isMeTom={isMeTom}
+                phase={phase}
+                onPeek={canPeek ? handlePeek : null}
+                onVote={phase === 'voting' ? handleVote : null}
+                onAccomplice={canAccomplice ? handleAccomplice : null}
+                onDodobirdAccomplice={canDodobirdAccomplice ? handleDodobirdAccomplice : null}
+                onAssassinate={(canAssassinate || phase === 'assassinate') ? handleAssassinate : null}
+                onHandpickedChoose={roomState.is_handpicked ? handleHandpickedChoose : null}
+                myVote={me?.voted_for}
+                canAccomplice={canAccomplice}
+                canDodobirdAccomplice={canDodobirdAccomplice}
+                canAssassinate={canAssassinate}
+                isHandpicked={!!roomState.is_handpicked}
+                handpickedBoostTargetId={roomState.handpicked_boost_target_id}
+                excludeAccomplice={gameInfo?.dodobird_id}
+                excludeDodobirdAccomplice={gameInfo?.thief_id}
+                noVoteTarget={roomState.no_vote_target}
+                voteOnlyTarget={roomState.vote_only_target}
+                noAssassinateTarget={gameInfo?.thief_id || roomState?.thief_id}
+              />
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {playerList.map((p, i) => (
-            <PlayerCard
-              key={p.id}
-              player={{
-                ...p,
-                vote_count: roomState.vote_results?.[p.id] || 0,
-              }}
-              index={i + 1}
-              isMe={p.id === playerId}
-              isCreator={p.id === creator_id}
-              isMeThief={isMeThief}
-              isMeTom={isMeTom}
-              phase={phase}
-              onPeek={canPeek ? handlePeek : null}
-              onVote={phase === 'voting' ? handleVote : null}
-              onAccomplice={canAccomplice ? handleAccomplice : null}
-              onDodobirdAccomplice={canDodobirdAccomplice ? handleDodobirdAccomplice : null}
-              onAssassinate={(canAssassinate || phase === 'assassinate') ? handleAssassinate : null}
-              myVote={me?.voted_for}
-              canAccomplice={canAccomplice}
-              canDodobirdAccomplice={canDodobirdAccomplice}
-              canAssassinate={canAssassinate}
-              excludeAccomplice={gameInfo?.dodobird_id}
-              excludeDodobirdAccomplice={gameInfo?.thief_id}
-              noVoteTarget={roomState.no_vote_target}
-              voteOnlyTarget={roomState.vote_only_target}
-            />
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Accomplice Full-Screen Overlay */}
       {screenShake && (
@@ -814,6 +1021,9 @@ export default function Room({ ws }) {
 
         {!isSpectator && phase === 'day' && (
           <>
+            {roomState.day_start_time && roomState.lethal_tempo_threshold && (
+              <LethalTempoCountdown startTime={roomState.day_start_time} threshold={roomState.lethal_tempo_threshold} />
+            )}
             <button
               onClick={handleRequestVote}
               disabled={roomState.i_requested_vote}
@@ -832,6 +1042,15 @@ export default function Room({ ws }) {
         {!isSpectator && phase === 'voting' && (
           <div className="text-sm text-white/50">
             🗳️ 投票中 ({roomState.voted_count || 0}/{roomState.total_voters || 0})
+            {roomState.is_handpicked && (
+              <div className="text-amber-200 mt-1">
+                🎯 精心挑选：你的投票变为挑选，请在玩家卡片上选择一名玩家，TA的投票对象将+2票。
+                {roomState.handpicked_boost_target_id && (() => {
+                  const t = players[roomState.handpicked_boost_target_id];
+                  return t ? <span className="font-bold"> 已选：{t.name}</span> : null;
+                })()}
+              </div>
+            )}
           </div>
         )}
 

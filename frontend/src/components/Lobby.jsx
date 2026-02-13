@@ -33,6 +33,9 @@ export default function Lobby({ ws }) {
   const [outsiderTomJerry, setOutsiderTomJerry] = useState(false);
   const [hexTimeWarp, setHexTimeWarp] = useState(false);
   const [hexPerceptionInterference, setHexPerceptionInterference] = useState(false);
+  const [hexRetirementAccount, setHexRetirementAccount] = useState(false);
+  const [hexLethalTempo, setHexLethalTempo] = useState(false);
+  const [hexHandpicked, setHexHandpicked] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
@@ -52,6 +55,9 @@ export default function Lobby({ ws }) {
       outsider_tom_jerry: outsiderTomJerry,
       hex_time_warp: hexTimeWarp,
       hex_perception_interference: hexPerceptionInterference,
+      hex_retirement_account: hexRetirementAccount,
+      hex_lethal_tempo: hexLethalTempo,
+      hex_handpicked: hexHandpicked,
     });
   };
 
@@ -113,8 +119,8 @@ export default function Lobby({ ws }) {
               <p className="font-medium text-white/70 mb-1">🌙 1. 夜晚阶段</p>
               <p>天黑请闭眼，按骰子点数顺序，对应点数的玩家睁眼并行动。</p>
               <ul className="list-disc list-inside mt-1 space-y-0.5 text-white/40">
-                <li>如果一个瞌睡鼠独自醒来（大盗不行），可以秘密地查看任意一名玩家的骰子。</li>
-                <li>如果不止一个人醒来，则不能查看骰子，但可以相互监视。</li>
+                <li>如果一个瞌睡鼠独自醒来（大盗不行），可以偷看任意一名玩家的骰子。</li>
+                <li>如果不止一个人醒来，则不能偷看骰子，但可以相互监视。</li>
                 <li>无论多少人同时睁眼，大盗醒来都一定要偷走奶酪（即使被监视）。</li>
               </ul>
             </div>
@@ -147,7 +153,7 @@ export default function Lobby({ ws }) {
                   <ul className="list-disc list-inside space-y-0.5">
                     <li>🏆 胜利条件：第三方阵营，自己被投出局即获胜。</li>
                     <li>🔍 知道大盗身份，大盗也知道呆呆鸟。拥有选"假共犯"能力。</li>
-                    <li>🎭 被选中的玩家以为大盗选了自己为共犯（实际是呆呆鸟选的，看到的大盗信息也是呆呆鸟）。</li>
+                    <li>🎭 被选中的玩家以为大盗选了自己为“真共犯”（实际是呆呆鸟选的，看到的大盗信息也是呆呆鸟）。</li>
                     <li>🗳️ 投票限制：呆呆鸟只能投给大盗，大盗也只能投给呆呆鸟，双方只能互投。</li>
                   </ul>
                 </div>
@@ -163,10 +169,13 @@ export default function Lobby({ ws }) {
             </div>
             <div className="border-t border-white/10 pt-3 mt-3">
               <p className="font-medium text-white/70 mb-2">⚡ 海克斯科技（可选）</p>
-              <p className="mb-2">开启后每局随机赋予一名玩家特殊能力（独立于外来者，可同时存在）。持有者只知道自己有技能，不知道影响了谁。</p>
+              <p className="mb-2">开启后每局随机赋予一名玩家特殊技能（独立于外来者，可同时存在）</p>
               <ul className="list-disc list-inside space-y-1 text-white/40">
-                <li><span className="text-white/60">⏳ 时空错乱</span>：随机让两名玩家在对方的骰子点数时间醒来，但不交换骰子。持有者自己不能偷看骰子。</li>
-                <li><span className="text-white/60">🌀 感知干涉</span>：随机迷惑一名玩家。被迷惑者会遭遇：①在错误时间醒来但正确操作；或②在正确时间醒来但看到错误信息。</li>
+                <li><span className="text-white/60">⏳ 时空错乱</span>：随机让两名玩家在对方的骰子点数时间醒来，但不会交换骰子。</li>
+                <li><span className="text-white/60">🌀 感知干涉</span>：随机迷惑一名玩家。被迷惑者会遭遇：①在错误时间醒来但正确操作；或 ②在正确时间醒来但看到错误信息。</li>
+                <li><span className="text-white/60">💰 退休账户</span>：只出现在白板瞌睡鼠身上。每当你获得一票，你投票的对象获得+2票。</li>
+                <li><span className="text-white/60">🎵 致命节奏</span>：如果白天讨论时长分钟数超过玩家人数，你获得+1票。白天阶段会显示倒计时。</li>
+                <li><span className="text-white/60">🎯 精心挑选</span>：只出现在白板瞌睡鼠身上。你的投票变为挑选，你无法投票。挑选一名玩家，让TA投票对象获得+2票。</li>
               </ul>
             </div>
           </div>
@@ -367,6 +376,9 @@ export default function Lobby({ ws }) {
                   {[
                     { key: 'time_warp', label: '⏳ 时空错乱', desc: '随机让两人在对方的点数时间醒来', value: hexTimeWarp, setter: setHexTimeWarp },
                     { key: 'perception_interference', label: '🌀 感知干涉', desc: '迷惑一人，使其在错误时间醒来或看到错误信息', value: hexPerceptionInterference, setter: setHexPerceptionInterference },
+                    { key: 'retirement_account', label: '💰 退休账户', desc: '每获得一票，你的投票目标+2票（白板鼠专属）', value: hexRetirementAccount, setter: setHexRetirementAccount },
+                    { key: 'lethal_tempo', label: '🎵 致命节奏', desc: '白天时长超过玩家人数分钟，你+1票', value: hexLethalTempo, setter: setHexLethalTempo },
+                    { key: 'handpicked', label: '🎯 精心挑选', desc: '投票变为挑选，挑选一人TA目标+2票（白板鼠专属）', value: hexHandpicked, setter: setHexHandpicked },
                   ].map((o) => (
                     <div
                       key={o.key}
@@ -414,11 +426,11 @@ export default function Lobby({ ws }) {
                   const isWaiting = room.phase === 'waiting';
                   const isFull = room.player_count >= room.max_players;
                   const phaseLabels = {
-                    waiting: { text: '等待中', color: 'bg-green-500/20 text-green-300' },
-                    night: { text: '夜晚', color: 'bg-indigo-500/20 text-indigo-300' },
-                    day: { text: '白天', color: 'bg-yellow-500/20 text-yellow-300' },
-                    voting: { text: '投票中', color: 'bg-red-500/20 text-red-300' },
-                    result: { text: '结算中', color: 'bg-purple-500/20 text-purple-300' },
+                    waiting: { text: '等待中', color: 'bg-blue-500/30 text-blue-300' },
+                    night: { text: '夜晚', color: 'bg-indigo-500/30 text-indigo-300' },
+                    day: { text: '白天', color: 'bg-amber-500/30 text-amber-200' },
+                    voting: { text: '投票中', color: 'bg-red-500/30 text-red-300' },
+                    result: { text: '结算中', color: 'bg-emerald-500/30 text-emerald-200' },
                   };
                   const phaseInfo = phaseLabels[room.phase] || { text: room.phase, color: 'bg-white/10 text-white/60' };
                   return (
@@ -439,7 +451,7 @@ export default function Lobby({ ws }) {
                             <span>🌟 {room.outsiders.map(o => o === 'drunk' ? '�' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}</span>
                           )}
                           {room.hex_skills && room.hex_skills.length > 0 && (
-                            <span>⚡ {room.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : '').join('')}</span>
+                            <span>⚡ {room.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : h === 'retirement_account' ? '💰' : h === 'lethal_tempo' ? '🎵' : h === 'handpicked' ? '🎯' : '').join('')}</span>
                           )}
                         </div>
                       </div>

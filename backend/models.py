@@ -69,7 +69,7 @@ class Player:
         self.peek_result: Optional[int] = None
         self.is_accomplice: bool = False
         self.outsider: Optional[str] = None  # None, "drunk", "dodobird", "tom", "jerry"
-        self.hex_skill: Optional[str] = None  # None, "time_warp", "perception_interference"
+        self.hex_skill: Optional[str] = None  # None, "time_warp", "perception_interference", "retirement_account", "lethal_tempo", "handpicked"
 
     def to_dict(self, reveal: bool = False, is_self: bool = False) -> dict:
         data = {

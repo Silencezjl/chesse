@@ -1,3 +1,4 @@
+import time
 from models import GamePhase, Role
 from typing import Optional
 
@@ -50,16 +51,46 @@ class VotingMixin:
         return True, ""
 
     def all_voted(self) -> bool:
-        for p in self.players.values():
+        for pid, p in self.players.items():
+            # Handpicked hex holder doesn't vote, skip them
+            if self.hex_type == "handpicked" and pid == self.hex_target_id:
+                continue
             if p.voted_for is None:
                 return False
         return True
 
     def tally_votes(self) -> dict:
         tally: dict[str, int] = {}
-        for p in self.players.values():
-            if p.voted_for:
-                tally[p.voted_for] = tally.get(p.voted_for, 0) + 1
+        hex_holder = self.players.get(self.hex_target_id) if self.hex_target_id else None
+
+        for pid, p in self.players.items():
+            if not p.voted_for:
+                continue
+            # Handpicked: hex holder's own vote doesn't count
+            if self.hex_type == "handpicked" and pid == self.hex_target_id:
+                continue
+            tally[p.voted_for] = tally.get(p.voted_for, 0) + 1
+
+        # Retirement account: each vote the hex holder receives → their target gets +2
+        if self.hex_type == "retirement_account" and hex_holder and hex_holder.voted_for:
+            votes_received = tally.get(self.hex_target_id, 0)
+            if votes_received > 0:
+                bonus = votes_received * 2
+                tally[hex_holder.voted_for] = tally.get(hex_holder.voted_for, 0) + bonus
+
+        # Lethal tempo: if day duration minutes > player count, hex holder's vote counts as 2
+        if self.hex_type == "lethal_tempo" and self.hex_target_id and self.day_start_time:
+            hex_p = self.players.get(self.hex_target_id)
+            if hex_p and hex_p.voted_for:
+                day_duration_minutes = (time.time() - self.day_start_time) / 60.0
+                if day_duration_minutes > len(self.players):
+                    tally[hex_p.voted_for] = tally.get(hex_p.voted_for, 0) + 1
+
+        # Handpicked: chosen player's vote target gets +2
+        if self.hex_type == "handpicked" and self.handpicked_boost_target_id:
+            boost_player = self.players.get(self.handpicked_boost_target_id)
+            if boost_player and boost_player.voted_for:
+                tally[boost_player.voted_for] = tally.get(boost_player.voted_for, 0) + 2
 
         self.vote_results = tally
 

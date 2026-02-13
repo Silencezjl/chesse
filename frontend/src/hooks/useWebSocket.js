@@ -155,6 +155,10 @@ export default function useWebSocket() {
           setGameInfo(msg.data);
           addNotification(msg.data.message, 'info');
           break;
+        case 'game_info':
+          // Merge game_info updates (e.g. delayed hex skill assignment)
+          setGameInfo(prev => prev ? { ...prev, ...msg.data } : msg.data);
+          break;
         case 'peek_result':
           setGameInfo(prev => ({ ...prev, peek: msg.data }));
           addNotification(`${msg.data.target_name} 的骰子点数是 ${msg.data.dice}`, 'success');

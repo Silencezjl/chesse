@@ -24,6 +24,9 @@ class SerializationMixin:
         self.poison_fake_dice = None
         self.poison_mode = None
         self.swap_info = None
+        self.day_start_time = None
+        self.handpicked_boost_target_id = None
+        self.hex_delayed = False
         self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
         self.dodobird_id = None
@@ -73,6 +76,9 @@ class SerializationMixin:
             # Hex skill settings
             "hex_time_warp": self.hex_time_warp,
             "hex_perception_interference": self.hex_perception_interference,
+            "hex_retirement_account": self.hex_retirement_account,
+            "hex_lethal_tempo": self.hex_lethal_tempo,
+            "hex_handpicked": self.hex_handpicked,
             # Outsider game state
             "outsider_type": self.outsider_type,
             "outsider_id": self.outsider_id,
@@ -83,6 +89,9 @@ class SerializationMixin:
             "poison_fake_dice": self.poison_fake_dice,
             "poison_mode": self.poison_mode,
             "swap_info": self.swap_info,
+            "day_start_time": self.day_start_time,
+            "handpicked_boost_target_id": self.handpicked_boost_target_id,
+            "hex_delayed": self.hex_delayed,
             "drunk_accomplice_id": self.drunk_accomplice_id,
             "thief_raw_accomplice_id": self.thief_raw_accomplice_id,
             # Dodobird state
@@ -129,6 +138,9 @@ class SerializationMixin:
         # Hex skill settings
         room.hex_time_warp = data.get("hex_time_warp", False)
         room.hex_perception_interference = data.get("hex_perception_interference", False)
+        room.hex_retirement_account = data.get("hex_retirement_account", False)
+        room.hex_lethal_tempo = data.get("hex_lethal_tempo", False)
+        room.hex_handpicked = data.get("hex_handpicked", False)
         # Outsider game state
         room.outsider_type = data.get("outsider_type")
         room.outsider_id = data.get("outsider_id")
@@ -139,6 +151,9 @@ class SerializationMixin:
         room.poison_fake_dice = data.get("poison_fake_dice")
         room.poison_mode = data.get("poison_mode")
         room.swap_info = data.get("swap_info")
+        room.day_start_time = data.get("day_start_time")
+        room.handpicked_boost_target_id = data.get("handpicked_boost_target_id")
+        room.hex_delayed = data.get("hex_delayed", False)
         room.drunk_accomplice_id = data.get("drunk_accomplice_id")
         room.thief_raw_accomplice_id = data.get("thief_raw_accomplice_id")
         # Dodobird state

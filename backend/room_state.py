@@ -22,6 +22,12 @@ class RoomStateMixin:
             result.append("time_warp")
         if self.hex_perception_interference:
             result.append("perception_interference")
+        if self.hex_retirement_account:
+            result.append("retirement_account")
+        if self.hex_lethal_tempo:
+            result.append("lethal_tempo")
+        if self.hex_handpicked:
+            result.append("handpicked")
         return result
 
     def to_list_item(self) -> dict:
@@ -109,9 +115,10 @@ class RoomStateMixin:
                     my_info["can_assassinate"] = not self.assassinate_used
                     if self.jerry_id:  # Tom doesn't know who Jerry is
                         pass  # intentionally don't reveal jerry_id
+                # Always include night_info so refresh in any phase preserves game info
+                night = self.get_player_night_info(for_player_id)
+                my_info.update(night)
                 if self.phase == GamePhase.NIGHT:
-                    night = self.get_player_night_info(for_player_id)
-                    my_info.update(night)
                     my_info["can_end_night"] = self.can_end_night(for_player_id)
                     my_info["i_night_done"] = for_player_id in self.night_actions_done
                 # Fake accomplice (chosen by dodobird) thinks they're accomplice
@@ -141,11 +148,19 @@ class RoomStateMixin:
             data["vote_request_required"] = self.vote_request_required()
             if for_player_id:
                 data["i_requested_vote"] = for_player_id in self.vote_requests
+            # Lethal tempo: send countdown only to the hex holder
+            if self.hex_type == "lethal_tempo" and self.day_start_time and for_player_id == self.hex_target_id:
+                data["day_start_time"] = self.day_start_time
+                data["lethal_tempo_threshold"] = len(self.players)  # minutes
 
         if self.phase == GamePhase.VOTING:
             voted_count = sum(1 for p in self.players.values() if p.voted_for is not None)
             data["voted_count"] = voted_count
             data["total_voters"] = sum(1 for p in self.players.values() if p.connected)
+            # Handpicked: let the hex holder know they need to choose a boost target
+            if for_player_id and self.hex_type == "handpicked" and self.hex_target_id == for_player_id:
+                data["is_handpicked"] = True
+                data["handpicked_boost_target_id"] = self.handpicked_boost_target_id
 
         if self.phase == GamePhase.VOTING:
             # Accomplice (real or fake) needs to know thief_id to disable voting
