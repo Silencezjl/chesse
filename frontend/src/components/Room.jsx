@@ -7,24 +7,24 @@ import {
 const DICE_ICONS = [null, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
 
 const ROLE_CARD_IMAGES = {
-  thief: new URL('../assets/processed/thief.png', import.meta.url).href,
-  mouse: new URL('../assets/processed/mouse_1.png', import.meta.url).href,
-  accomplice: new URL('../assets/processed/mouse_2.png', import.meta.url).href,
-  dodobird: new URL('../assets/processed/dodo.png', import.meta.url).href,
-  drunk: new URL('../assets/processed/drink.png', import.meta.url).href,
-  tom: new URL('../assets/processed/tom.png', import.meta.url).href,
-  jerry: new URL('../assets/processed/jerry.png', import.meta.url).href,
+  thief: new URL('../assets/processed/thief.jpg', import.meta.url).href,
+  accomplice: new URL('../assets/processed/mouse_2.jpg', import.meta.url).href,
+  dodobird: new URL('../assets/processed/dodo.jpg', import.meta.url).href,
+  drunk: new URL('../assets/processed/drink.jpg', import.meta.url).href,
+  tom: new URL('../assets/processed/tom.jpg', import.meta.url).href,
+  jerry: new URL('../assets/processed/jerry.jpg', import.meta.url).href,
 };
+
+const MOUSE_CARD_IMAGES = [
+  new URL('../assets/processed/mouse_1.jpg', import.meta.url).href,
+  new URL('../assets/processed/mouse_2.jpg', import.meta.url).href,
+  new URL('../assets/processed/mouse_3.jpg', import.meta.url).href,
+  new URL('../assets/processed/mouse_4.jpg', import.meta.url).href,
+  new URL('../assets/processed/mouse_5.jpg', import.meta.url).href,
+  new URL('../assets/processed/mouse_6.jpg', import.meta.url).href,
+];
 
 const HEX_SKILL_IMAGES = {
-  time_warp: new URL('../assets/hex_svg/hex_time_warp.svg', import.meta.url).href,
-  perception_interference: new URL('../assets/hex_svg/hex_perception_interference.svg', import.meta.url).href,
-  retirement_account: new URL('../assets/hex_svg/hex_retirement_account.svg', import.meta.url).href,
-  lethal_tempo: new URL('../assets/hex_svg/hex_lethal_tempo.svg', import.meta.url).href,
-  handpicked: new URL('../assets/hex_svg/hex_handpicked.svg', import.meta.url).href,
-};
-
-const HEX_SKILL_IMAGES_NF = {
   time_warp: new URL('../assets/hex_svg/hex_time_warp_nf.svg', import.meta.url).href,
   perception_interference: new URL('../assets/hex_svg/hex_perception_interference_nf.svg', import.meta.url).href,
   retirement_account: new URL('../assets/hex_svg/hex_retirement_account_nf.svg', import.meta.url).href,
@@ -32,13 +32,35 @@ const HEX_SKILL_IMAGES_NF = {
   handpicked: new URL('../assets/hex_svg/hex_handpicked_nf.svg', import.meta.url).href,
 };
 
-function resolveActionRoleCard(entry) {
+function stableHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+const _mouseCardCache = {};
+function assignMouseCards(playerIds) {
+  const cacheKey = playerIds.slice().sort().join(',');
+  if (_mouseCardCache[cacheKey]) return _mouseCardCache[cacheKey];
+  const sorted = playerIds.slice().sort((a, b) => stableHash(a) - stableHash(b));
+  const assignment = {};
+  sorted.forEach((pid, i) => {
+    assignment[pid] = MOUSE_CARD_IMAGES[i % MOUSE_CARD_IMAGES.length];
+  });
+  _mouseCardCache[cacheKey] = assignment;
+  return assignment;
+}
+
+function resolveActionRoleCard(entry, mouseCardMap) {
   if (entry.outsider && ROLE_CARD_IMAGES[entry.outsider]) {
     return ROLE_CARD_IMAGES[entry.outsider];
   }
   if (entry.role === 'thief') return ROLE_CARD_IMAGES.thief;
   if (entry.role === 'accomplice') return ROLE_CARD_IMAGES.accomplice;
-  return ROLE_CARD_IMAGES.mouse;
+  return mouseCardMap?.[entry.player_id] || MOUSE_CARD_IMAGES[0];
 }
 
 function DiceIcon({ value, size = 20 }) {
@@ -360,7 +382,6 @@ export default function Room({ ws }) {
   const canDodobirdAccomplice = phase === 'night' && isMeDodobird && gameInfo?.can_choose_accomplice;
   const canAssassinate = isMeTom && (gameInfo?.can_assassinate || roomState?.can_assassinate);
   const isCreator = playerId === creator_id;
-  const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isBrightPhase = phase === 'day' || phase === 'voting' || phase === 'assassinate';
   const infoTitleClass = isBrightPhase ? 'text-slate-900' : 'text-white';
   const infoTextClass = isBrightPhase ? 'text-slate-800' : 'text-white/85';
@@ -375,9 +396,8 @@ export default function Room({ ws }) {
   const roleGoodClass = isBrightPhase ? 'text-emerald-700' : 'text-emerald-300';
   const tomHintClass = isBrightPhase ? 'text-red-700' : 'text-red-300';
   const diceValueClass = isBrightPhase ? 'text-amber-700' : 'text-cheese-300';
-  const safariSvgStyle = isSafari
-    ? { WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }
-    : undefined;
+  const allPlayerIds = Object.keys(players);
+  const mouseCardMap = assignMouseCards(allPlayerIds);
 
   const myRoleCardImage =
     (isMeThief || isMeFakeThief) ? ROLE_CARD_IMAGES.thief :
@@ -385,10 +405,9 @@ export default function Room({ ws }) {
     isMeAccomplice ? ROLE_CARD_IMAGES.accomplice :
     isMeDodobird ? ROLE_CARD_IMAGES.dodobird :
     isMeJerry ? ROLE_CARD_IMAGES.jerry :
-    ROLE_CARD_IMAGES.mouse;
+    mouseCardMap[playerId] || MOUSE_CARD_IMAGES[0];
 
-  const hexImages = isSafari ? HEX_SKILL_IMAGES_NF : HEX_SKILL_IMAGES;
-  const myHexSkillImage = gameInfo?.hex_skill ? hexImages[gameInfo.hex_skill] : null;
+  const myHexSkillImage = gameInfo?.hex_skill ? HEX_SKILL_IMAGES[gameInfo.hex_skill] : null;
 
   return (
     <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
@@ -686,9 +705,8 @@ export default function Room({ ws }) {
                   src={myHexSkillImage}
                   alt="海克斯技能"
                   className="w-full h-full object-contain object-center"
-                  style={safariSvgStyle}
                   loading="eager"
-                  decoding="sync"
+                  decoding="async"
                 />
               </div>
             )}
@@ -798,7 +816,6 @@ export default function Room({ ws }) {
       {phase === 'result' && roomState.action_log && (
         <div
           className="glass-card p-4"
-          style={isSafari ? { WebkitBackdropFilter: 'none', backdropFilter: 'none' } : undefined}
         >
           <div className="text-sm font-bold text-white/70 mb-3">📜 行动过程公示</div>
           <div className="space-y-3">
@@ -811,8 +828,8 @@ export default function Room({ ws }) {
               const roleLabels = { thief: '🧀 奶酪大盗', mouse: '🐭 瞌睡鼠', accomplice: '🤝 共犯' };
               const isMyEntry = entry.player_id === playerId;
               const finalVotes = roomState.vote_results?.[entry.player_id] || 0;
-              const roleCardImage = resolveActionRoleCard(entry);
-              const hexCardImage = entry.hex_skill ? hexImages[entry.hex_skill] : null;
+              const roleCardImage = resolveActionRoleCard(entry, mouseCardMap);
+              const hexCardImage = entry.hex_skill ? HEX_SKILL_IMAGES[entry.hex_skill] : null;
               return (
                 <div key={entry.player_id} className={`border rounded-lg p-3 relative ${roleColors[entry.role] || roleColors.mouse} ${isMyEntry ? 'ring-2 ring-cheese-400 bg-cheese-400/10' : ''}`}>
                   <div className="flex items-start gap-3">
@@ -867,9 +884,8 @@ export default function Room({ ws }) {
                           src={hexCardImage}
                           alt={`${entry.name}海克斯技能`}
                           className="w-full h-full object-contain object-center"
-                          style={safariSvgStyle}
-                          loading={isSafari ? 'eager' : 'lazy'}
-                          decoding={isSafari ? 'sync' : 'async'}
+                          loading="lazy"
+                          decoding="async"
                         />
                       </div>
                     )}
