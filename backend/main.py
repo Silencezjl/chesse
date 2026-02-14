@@ -839,6 +839,9 @@ async def handle_handpicked_choose(ws: WebSocket, player_id: str, data: dict):
     if room.hex_type != "handpicked" or room.hex_target_id != player_id:
         await ws.send_json({"type": "error", "data": {"message": "你没有精心挑选技能"}})
         return
+    if room.handpicked_boost_target_id:
+        await ws.send_json({"type": "error", "data": {"message": "你已经选择过了，不能改选"}})
+        return
     target_id = data.get("target_id")
     if not target_id or target_id not in room.players or target_id == player_id:
         await ws.send_json({"type": "error", "data": {"message": "无效的目标"}})
@@ -850,6 +853,23 @@ async def handle_handpicked_choose(ws: WebSocket, player_id: str, data: dict):
         "data": {"target_id": target_id, "target_name": target.name, "message": f"你选择了 {target.name}，TA的投票对象将获得+2票"}
     })
     await send_room_state(room)
+
+    # Check if all votes (including handpicked choice) are now in
+    if room.all_voted():
+        result = room.tally_votes()
+        if result.get("phase") == "assassinate":
+            await broadcast_to_room(room, {
+                "type": "assassinate_phase",
+                "data": result
+            })
+            await send_room_state(room)
+            asyncio.create_task(_assassinate_timer(room))
+        else:
+            await broadcast_to_room(room, {
+                "type": "game_result",
+                "data": result
+            })
+            await send_room_state(room)
 
 
 MESSAGE_HANDLERS = {

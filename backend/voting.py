@@ -57,6 +57,9 @@ class VotingMixin:
                 continue
             if p.voted_for is None:
                 return False
+        # Handpicked: also require the hex holder to have chosen their boost target
+        if self.hex_type == "handpicked" and self.hex_target_id and not self.handpicked_boost_target_id:
+            return False
         return True
 
     def tally_votes(self) -> dict:

@@ -8,7 +8,7 @@ const DICE_ICONS = [null, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
 
 const ROLE_CARD_IMAGES = {
   thief: new URL('../assets/processed/thief.jpg', import.meta.url).href,
-  accomplice: new URL('../assets/processed/mouse_2.jpg', import.meta.url).href,
+  accomplice: new URL('../assets/processed/helper.jpg', import.meta.url).href,
   dodobird: new URL('../assets/processed/dodo.jpg', import.meta.url).href,
   drunk: new URL('../assets/processed/drink.jpg', import.meta.url).href,
   tom: new URL('../assets/processed/tom.jpg', import.meta.url).href,
@@ -766,6 +766,7 @@ export default function Room({ ws }) {
           <div className="text-5xl mb-3">
             {gameInfo?.result?.dodobird_win ? '🐦'
               : roomState.assassinate_result === 'success' ? '🐱🗡️'
+              : (roomState.assassinate_result === 'fail' || roomState.assassinate_result === 'timeout') && roomState.winner === 'mouse' ? '🎉'
               : roomState.winner === 'mouse' ? '🎉' : '😈'}
           </div>
           <div className="text-2xl font-bold mb-2">
@@ -773,9 +774,9 @@ export default function Room({ ws }) {
               ? '呆呆鸟胜利！'
               : roomState.assassinate_result === 'success'
                 ? 'Tom 刺杀成功！大盗阵营胜利！'
-                : roomState.assassinate_result === 'fail'
+                : roomState.assassinate_result === 'fail' && roomState.winner === 'mouse'
                   ? 'Tom 刺杀失败！瞌睡鼠胜利！'
-                  : roomState.assassinate_result === 'timeout'
+                  : roomState.assassinate_result === 'timeout' && roomState.winner === 'mouse'
                     ? 'Tom 刺杀超时！瞌睡鼠胜利！'
                     : roomState.winner === 'mouse' ? '瞌睡鼠胜利！' : '奶酪大盗胜利！'}
           </div>
@@ -784,13 +785,15 @@ export default function Room({ ws }) {
               ? `呆呆鸟 ${gameInfo.result.dodobird_name} 成功让自己被投票出局！`
               : roomState.assassinate_result === 'success'
                 ? `Tom 正确刺杀了 Jerry！`
-                : roomState.assassinate_result === 'fail'
+                : roomState.assassinate_result === 'fail' && roomState.winner === 'mouse'
                   ? `Tom 刺杀了错误的人，Jerry 安全了！`
-                  : roomState.assassinate_result === 'timeout'
+                  : roomState.assassinate_result === 'timeout' && roomState.winner === 'mouse'
                     ? `Tom 未能在时限内行动，瞌睡鼠获胜！`
                     : roomState.winner === 'mouse'
                       ? '成功找出了奶酪大盗！'
-                      : '大盗成功蒙混过关！'}
+                      : roomState.assassinate_result === 'fail' && roomState.winner === 'thief'
+                        ? '大盗成功蒙混过关！Tom 的提前刺杀也未能命中 Jerry。'
+                        : '大盗成功蒙混过关！'}
           </div>
           {gameInfo?.result && (
             <div className="text-sm text-white/50">
