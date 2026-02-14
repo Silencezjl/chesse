@@ -315,7 +315,6 @@ class NightActionsMixin:
         player.has_peeked = True
         player.peek_target = target_id
         player.peek_result = peek_result
-        self.night_actions_done.add(player_id)
 
         # Update night_info with peek result
         self.night_info[player_id]["has_peeked"] = True

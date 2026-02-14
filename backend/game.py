@@ -201,31 +201,7 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         # Compute night info based on dice groups
         self.compute_night_info()
 
-        # Auto-mark players who have no actions as night done
-        for pid, info in self.night_info.items():
-            player = self.players[pid]
-            # Drunk mouse must choose accomplice (if enabled), so not auto-done
-            if player.outsider == "drunk":
-                if self.accomplice_enabled:
-                    continue
-                else:
-                    self.night_actions_done.add(pid)
-                    continue
-            # Thief must choose accomplice, not auto-done
-            if player.role == Role.THIEF:
-                continue
-            # Dodobird must choose fake accomplice (if accomplice enabled), not auto-done
-            if player.role == Role.DODOBIRD and self.must_choose_accomplice():
-                continue
-            # Time_warp hex holder can't peek, auto-done
-            if player.hex_skill == "time_warp":
-                self.night_actions_done.add(pid)
-                continue
-            # Mouse that can peek is not auto-done
-            if info.get("can_peek"):
-                continue
-            # Mouse in group, no action needed
-            self.night_actions_done.add(pid)
+        # All players must manually click "end night" button, no auto-done
 
 
 class GameManager:

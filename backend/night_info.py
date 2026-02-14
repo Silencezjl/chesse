@@ -259,18 +259,10 @@ class NightInfoMixin:
         is_alone = len(same_group_ids) == 0
         thief_in_group = self.thief_id in group
 
-        # Time_warp hex holder cannot peek even if alone
-        is_time_warp = player.hex_skill == "time_warp"
-
         if is_alone:
-            if is_time_warp:
-                info["can_peek"] = False
-                info["same_group"] = []
-                info["message"] = "你独自睁眼。（⏳ 你拥有时空错乱技能，不能偷看骰子）"
-            else:
-                info["can_peek"] = True
-                info["same_group"] = []
-                info["message"] = "你是瞌睡鼠，你独自睁眼。你可以偷看一位玩家的骰子点数。"
+            info["can_peek"] = True
+            info["same_group"] = []
+            info["message"] = "你是瞌睡鼠，你独自睁眼。你可以偷看一位玩家的骰子点数。"
             if thief_dice < perceived_dice:
                 info["cheese_stolen"] = True
                 info["message"] += "\n⚠️ 你发现奶酪已经被偷走了！"

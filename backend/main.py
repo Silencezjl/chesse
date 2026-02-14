@@ -278,8 +278,6 @@ async def handle_ready(ws: WebSocket, player_id: str, data: dict):
             await send_to_player(pid, {"type": "game_start", "data": night_data})
 
         await send_room_state(room)
-        # Auto-check if all night actions already done (e.g. all mice are in groups)
-        await check_night_complete(room)
 
 
 async def handle_peek(ws: WebSocket, player_id: str, data: dict):
@@ -302,10 +300,7 @@ async def handle_peek(ws: WebSocket, player_id: str, data: dict):
                 "dice": result
             }
         })
-        # Mark as done and check
-        room.mark_night_done(player_id)
         await send_room_state(room)
-        await check_night_complete(room)
 
 
 async def _try_notify_accomplices(room: Room):
