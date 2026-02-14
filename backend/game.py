@@ -38,7 +38,7 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         self.player_order: list[str] = []  # shuffled display order
         self.all_disconnected_since: Optional[float] = None  # timestamp when all players disconnected
         # Outsider settings (which outsiders are enabled)
-        self.outsider_drunk: bool = False         # 酒鬼鼠 �
+        self.outsider_drunk: bool = False         # 酒鬼鼠 🍻
         self.outsider_dodobird: bool = False      # 呆呆鸟 🐦
         self.outsider_tom_jerry: bool = False     # Tom & Jerry 🐱🐭
         # Hex skill settings (independent of outsiders)

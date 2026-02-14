@@ -448,7 +448,7 @@ export default function Lobby({ ws }) {
                           <span>🎲 {room.max_dice}面</span>
                           <span>{room.thief_see_all_dice ? '👁 可见点数' : '🙈 不可见点数'}</span>
                           {room.outsiders && room.outsiders.length > 0 && (
-                            <span>🌟 {room.outsiders.map(o => o === 'drunk' ? '�' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}</span>
+                            <span>🌟 {room.outsiders.map(o => o === 'drunk' ? '🍻' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}</span>
                           )}
                           {room.hex_skills && room.hex_skills.length > 0 && (
                             <span>⚡ {room.hex_skills.map(h => h === 'time_warp' ? '⏳' : h === 'perception_interference' ? '🌀' : h === 'retirement_account' ? '💰' : h === 'lethal_tempo' ? '🎵' : h === 'handpicked' ? '🎯' : '').join('')}</span>

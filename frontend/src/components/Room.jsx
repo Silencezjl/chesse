@@ -433,7 +433,7 @@ export default function Room({ ws }) {
               {roomState.outsiders && roomState.outsiders.length > 0 && (
                 <>
                   <span className="mx-1">·</span>
-                  🌟 {roomState.outsiders.map(o => o === 'drunk' ? '�' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}
+                  🌟 {roomState.outsiders.map(o => o === 'drunk' ? '🍻' : o === 'dodobird' ? '🐦' : o === 'tom_jerry' ? '🐱🐭' : '').join('')}
                 </>
               )}
               {roomState.hex_skills && roomState.hex_skills.length > 0 && (
