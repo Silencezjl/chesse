@@ -39,9 +39,8 @@ class NightActionsMixin:
 
     def can_end_night(self, player_id: str) -> bool:
         """Check if a player can click 'end night'.
-        Conditions:
-        1. Player's own action is complete (mouse peeked if can_peek; thief chose accomplice; drunk chose accomplice)
-        2. All players' actions must be complete (global wait condition)
+        Only checks the player's own action is complete. No global wait —
+        avoids leaking action order information.
         """
         player = self.players.get(player_id)
         if not player:
@@ -68,10 +67,6 @@ class NightActionsMixin:
             night = self.night_info.get(player_id, {})
             if night.get("can_peek") and not night.get("has_peeked"):
                 return False
-
-        # Global: all players' actions must be complete
-        if not self.all_actions_complete():
-            return False
 
         return True
 
