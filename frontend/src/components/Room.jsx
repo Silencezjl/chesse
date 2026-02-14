@@ -6,13 +6,14 @@ import {
 
 const DICE_ICONS = [null, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
 
+const _v = '?v=2';
 const ROLE_CARD_IMAGES = {
-  thief: new URL('../assets/processed/thief.jpg', import.meta.url).href,
-  accomplice: new URL('../assets/processed/helper.jpg', import.meta.url).href,
-  dodobird: new URL('../assets/processed/dodo.jpg', import.meta.url).href,
-  drunk: new URL('../assets/processed/drink.jpg', import.meta.url).href,
-  tom: new URL('../assets/processed/tom.jpg', import.meta.url).href,
-  jerry: new URL('../assets/processed/jerry.jpg', import.meta.url).href,
+  thief: new URL('../assets/processed/thief.jpg', import.meta.url).href + _v,
+  accomplice: new URL('../assets/processed/helper.jpg', import.meta.url).href + _v,
+  dodobird: new URL('../assets/processed/dodo.jpg', import.meta.url).href + _v,
+  drunk: new URL('../assets/processed/drink.jpg', import.meta.url).href + _v,
+  tom: new URL('../assets/processed/tom.jpg', import.meta.url).href + _v,
+  jerry: new URL('../assets/processed/jerry.jpg', import.meta.url).href + _v,
 };
 
 const MOUSE_CARD_IMAGES = [
