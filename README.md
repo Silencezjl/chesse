@@ -17,10 +17,11 @@
 docker compose up -d --build
 ```
 
-服务启动后访问 `http://localhost:8000` 开始游戏。
+服务启动后访问 `http://localhost` 开始游戏。
 
-包含两个容器：
-- **cheese-thief** — 游戏服务（FastAPI + 前端静态文件），端口 8000
+包含三个容器：
+- **cheese-frontend** — 前端服务，端口 80
+- **cheese-backend** — FastAPI 游戏服务
 - **cheese-redis** — Redis 持久化存储
 
 ### 停止服务
@@ -32,7 +33,7 @@ docker compose down
 ### 查看日志
 
 ```bash
-docker compose logs -f cheese-thief
+docker compose logs -f cheese-backend
 ```
 
 ### 重新构建（代码更新后）
