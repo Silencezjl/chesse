@@ -1,6 +1,4 @@
-import time
 from models import GamePhase, Role
-from typing import Optional
 
 
 class VotingMixin:
@@ -29,6 +27,8 @@ class VotingMixin:
         voter = self.players.get(voter_id)
         if not voter or target_id not in self.players:
             return False, "无效的投票目标"
+        if voter_id == target_id:
+            return False, "不能投票给自己"
         # Cannot change vote once cast
         if voter.voted_for is not None:
             return False, "你已经投过票了，不能改票"
@@ -51,82 +51,19 @@ class VotingMixin:
         return True, ""
 
     def all_voted(self) -> bool:
-        for pid, p in self.players.items():
-            # Handpicked hex holder doesn't vote, skip them
-            if self.hex_type == "handpicked" and pid == self.hex_target_id:
-                continue
-            if p.voted_for is None:
-                return False
-        # Handpicked: also require the hex holder to have chosen their boost target
-        if self.hex_type == "handpicked" and self.hex_target_id and not self.handpicked_boost_target_id:
-            return False
-        return True
+        return all(p.voted_for is not None for p in self.players.values())
 
     def tally_votes(self) -> dict:
-        tally: dict[str, int] = {}
-        hex_holder = self.players.get(self.hex_target_id) if self.hex_target_id else None
-
-        for pid, p in self.players.items():
-            if not p.voted_for:
-                continue
-            # Handpicked: hex holder's own vote doesn't count
-            if self.hex_type == "handpicked" and pid == self.hex_target_id:
-                continue
-            tally[p.voted_for] = tally.get(p.voted_for, 0) + 1
-
-        # Retirement account: each vote the hex holder receives → their target gets +2
-        if self.hex_type == "retirement_account" and hex_holder and hex_holder.voted_for:
-            votes_received = tally.get(self.hex_target_id, 0)
-            if votes_received > 0:
-                bonus = votes_received * 2
-                tally[hex_holder.voted_for] = tally.get(hex_holder.voted_for, 0) + bonus
-
-        # Lethal tempo: if day duration minutes > player count, hex holder's vote counts as 2
-        if self.hex_type == "lethal_tempo" and self.hex_target_id and self.day_start_time:
-            hex_p = self.players.get(self.hex_target_id)
-            if hex_p and hex_p.voted_for:
-                day_duration_minutes = (time.time() - self.day_start_time) / 60.0
-                if day_duration_minutes > len(self.players):
-                    tally[hex_p.voted_for] = tally.get(hex_p.voted_for, 0) + 1
-
-        # Handpicked: chosen player's vote target gets +2
-        if self.hex_type == "handpicked" and self.handpicked_boost_target_id:
-            boost_player = self.players.get(self.handpicked_boost_target_id)
-            if boost_player and boost_player.voted_for:
-                tally[boost_player.voted_for] = tally.get(boost_player.voted_for, 0) + 2
-
+        tally = {}
+        for player in self.players.values():
+            if player.voted_for:
+                tally[player.voted_for] = tally.get(player.voted_for, 0) + 1
         self.vote_results = tally
 
-        # Determine dodobird win separately
-        dodobird_win = False
-        enter_assassinate = False
-
-        if not tally:
-            self.voted_player_id = None
-            self.winner = "thief"
-        else:
-            max_votes = max(tally.values())
-            top = [pid for pid, v in tally.items() if v == max_votes]
-            self.voted_player_id = top[0]  # tie: first one
-
-            # Check if dodobird was voted out
-            if self.dodobird_id and self.voted_player_id == self.dodobird_id:
-                dodobird_win = True
-                self.winner = "thief"
-            elif self.voted_player_id == self.thief_id:
-                # Mice found the thief! But if Tom is active and hasn't used assassination...
-                if self.tom_id and not self.assassinate_used:
-                    enter_assassinate = True
-                    # Don't set winner yet - wait for assassination phase
-                else:
-                    self.winner = "mouse"
-            else:
-                self.winner = "thief"
-
-        if enter_assassinate:
-            self.phase = GamePhase.ASSASSINATE
-        else:
-            self.phase = GamePhase.RESULT
+        self.voted_player_id = max(tally, key=tally.get) if tally else None
+        dodobird_win = bool(self.dodobird_id and self.voted_player_id == self.dodobird_id)
+        self.winner = "dodobird" if dodobird_win else "mouse" if self.voted_player_id == self.thief_id else "thief"
+        self.phase = GamePhase.RESULT
 
         result = {
             "vote_results": tally,
@@ -138,13 +75,6 @@ class VotingMixin:
             "accomplice_id": self.accomplice_id,
             "accomplice_name": self.players[self.accomplice_id].name if self.accomplice_id else None,
         }
-
-        if enter_assassinate:
-            result["phase"] = "assassinate"
-            result["tom_id"] = self.tom_id
-            result["tom_name"] = self.players[self.tom_id].name
-            result["assassinate_seconds"] = 30
-            return result
 
         # Normal result phase
         action_log = self.build_action_log()
@@ -159,16 +89,6 @@ class VotingMixin:
             result["outsider_type"] = self.outsider_type
             result["outsider_id"] = self.outsider_id
             result["outsider_name"] = outsider_player.name
-        # Include Tom & Jerry info
-        if self.tom_id:
-            result["tom_id"] = self.tom_id
-            result["tom_name"] = self.players[self.tom_id].name
-        if self.jerry_id:
-            result["jerry_id"] = self.jerry_id
-            result["jerry_name"] = self.players[self.jerry_id].name
-        if self.assassinate_result:
-            result["assassinate_result"] = self.assassinate_result
-            result["assassinate_target_id"] = self.assassinate_target_id
         # Include dodobird info in result
         if self.dodobird_id:
             dodobird_player = self.players[self.dodobird_id]
@@ -180,57 +100,4 @@ class VotingMixin:
                 result["dodobird_accomplice_id"] = self.dodobird_accomplice_id
                 result["dodobird_accomplice_name"] = fake_acc.name
                 result["dodobird_accomplice_is_real"] = (self.dodobird_accomplice_id == self.accomplice_id)
-        # Include hex skill info
-        if self.hex_type and self.hex_target_id:
-            result["hex_type"] = self.hex_type
-            result["hex_target_id"] = self.hex_target_id
-            result["hex_target_name"] = self.players[self.hex_target_id].name
-        # Flag: mutual selection caused no accomplice
-        if (self.outsider_type == "drunk"
-                and self.thief_raw_accomplice_id == self.outsider_id
-                and self.drunk_accomplice_id == self.thief_id
-                and self.accomplice_id is None):
-            result["no_accomplice_reason"] = "mutual_selection"
-        return result
-
-    def finalize_assassinate(self, assassinate_result: Optional[dict] = None) -> dict:
-        """Finalize the ASSASSINATE phase and move to RESULT.
-        Called after Tom assassinates or after timeout.
-        """
-        if assassinate_result and assassinate_result.get("correct"):
-            self.winner = "thief"
-        else:
-            # Tom failed or timed out -> mice win
-            if not self.assassinate_used:
-                # Timeout: mark as used with no target
-                self.assassinate_used = True
-                self.assassinate_result = "timeout"
-            self.winner = "mouse"
-
-        self.phase = GamePhase.RESULT
-        action_log = self.build_action_log()
-
-        result = {
-            "vote_results": self.vote_results,
-            "voted_player_id": self.voted_player_id,
-            "voted_player_name": self.players[self.voted_player_id].name if self.voted_player_id else None,
-            "voted_player_is_thief": self.voted_player_id == self.thief_id,
-            "winner": self.winner,
-            "thief_id": self.thief_id,
-            "thief_name": self.players[self.thief_id].name,
-            "accomplice_id": self.accomplice_id,
-            "accomplice_name": self.players[self.accomplice_id].name if self.accomplice_id else None,
-            "players": {pid: p.to_dict(reveal=True) for pid, p in self.players.items()},
-            "action_log": action_log,
-            "tom_id": self.tom_id,
-            "tom_name": self.players[self.tom_id].name if self.tom_id else None,
-            "jerry_id": self.jerry_id,
-            "jerry_name": self.players[self.jerry_id].name if self.jerry_id else None,
-            "assassinate_result": self.assassinate_result,
-            "assassinate_target_id": self.assassinate_target_id,
-        }
-        if self.hex_type and self.hex_target_id:
-            result["hex_type"] = self.hex_type
-            result["hex_target_id"] = self.hex_target_id
-            result["hex_target_name"] = self.players[self.hex_target_id].name
         return result

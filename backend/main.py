@@ -59,17 +59,7 @@ async def cleanup_stale_rooms_task():
     """Background task to clean up empty/stale rooms every 10 seconds."""
     while True:
         await asyncio.sleep(10)
-        # Remove rooms where no one is online
-        empty_ids = [rid for rid, room in game_manager.rooms.items() if room.all_offline()]
-        for rid in empty_ids:
-            room = game_manager.rooms.get(rid)
-            if room:
-                for pid in list(room.players) + list(room.spectators):
-                    player_rooms.pop(pid, None)
-                    await state_store.remove_player_room(pid)
-            game_manager.remove_room(rid)
-            await delete_room_from_redis(rid)
-        # Also remove rooms disconnected for 15+ minutes (safety net)
+        # Allow a disconnected room 15 minutes to reconnect.
         stale_ids = game_manager.cleanup_stale_rooms()
         for rid in stale_ids:
             to_remove = [pid for pid, r_id in player_rooms.items() if r_id == rid]
@@ -98,9 +88,10 @@ async def startup_event():
         for room_data in saved_rooms:
             try:
                 room = Room.deserialize(room_data)
+                room.update_disconnect_timer()
                 game_manager.rooms[room.id] = room
                 # Restore player_rooms mapping
-                for pid in room.players:
+                for pid in list(room.players) + list(room.spectators):
                     player_rooms[pid] = room.id
                 restored += 1
             except Exception as e:
@@ -175,23 +166,8 @@ async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
         if 6 <= val <= 10:
             room.max_dice = val
     # Outsider settings
-    if "outsider_drunk" in data:
-        room.outsider_drunk = bool(data["outsider_drunk"])
     if "outsider_dodobird" in data:
         room.outsider_dodobird = bool(data["outsider_dodobird"])
-    if "outsider_tom_jerry" in data:
-        room.outsider_tom_jerry = bool(data["outsider_tom_jerry"])
-    # Hex skill settings
-    if "hex_time_warp" in data:
-        room.hex_time_warp = bool(data["hex_time_warp"])
-    if "hex_perception_interference" in data:
-        room.hex_perception_interference = bool(data["hex_perception_interference"])
-    if "hex_retirement_account" in data:
-        room.hex_retirement_account = bool(data["hex_retirement_account"])
-    if "hex_lethal_tempo" in data:
-        room.hex_lethal_tempo = bool(data["hex_lethal_tempo"])
-    if "hex_handpicked" in data:
-        room.hex_handpicked = bool(data["hex_handpicked"])
 
     await ws.send_json({
         "type": "room_created",
@@ -260,7 +236,7 @@ async def handle_join_room(ws: WebSocket, player_id: str, data: dict):
 
 async def handle_ready(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
-    if not room:
+    if not room or room.phase != GamePhase.WAITING or player_id not in room.players:
         return
 
     ready = data.get("ready", True)
@@ -269,15 +245,19 @@ async def handle_ready(ws: WebSocket, player_id: str, data: dict):
     await send_room_state(room)
 
     # Check if all ready -> start game
-    if room.all_ready():
-        await asyncio.sleep(1)
-        room.start_game()
-        # Send personalized night info from precomputed night_info (stripped of internal flags)
-        for pid in room.players:
-            night_data = room.get_player_night_info(pid)
-            await send_to_player(pid, {"type": "game_start", "data": night_data})
-
-        await send_room_state(room)
+    if room.phase == GamePhase.WAITING and room.all_ready() and not room.game_start_pending:
+        room.game_start_pending = True
+        try:
+            await asyncio.sleep(1)
+            if room.phase != GamePhase.WAITING or not room.all_ready():
+                return
+            room.start_game()
+            for pid in room.players:
+                night_data = room.get_player_night_info(pid)
+                await send_to_player(pid, {"type": "game_start", "data": night_data})
+            await send_room_state(room)
+        finally:
+            room.game_start_pending = False
 
 
 async def handle_peek(ws: WebSocket, player_id: str, data: dict):
@@ -311,23 +291,6 @@ async def _try_notify_accomplices(room: Room):
       - Different targets: real accomplice sees real thief, fake accomplice sees dodobird as 'thief'
     """
     thief = room.players[room.thief_id]
-
-    # Drunk mouse special case: thief chose drunk mouse
-    drunk_id = room.outsider_id if room.outsider_type == "drunk" else None
-    if drunk_id and room.thief_raw_accomplice_id == drunk_id:
-        # Don't send to drunk mouse; wait for resolution
-        if room.accomplice_id and room.accomplice_id != drunk_id:
-            real_acc_id = room.accomplice_id
-            await send_to_player(real_acc_id, {
-                "type": "you_are_accomplice",
-                "data": {
-                    "thief_id": room.thief_id,
-                    "thief_name": thief.name,
-                    "thief_dice": thief.display_dice,
-                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
-                }
-            })
-        return
 
     # If dodobird is in play, wait for both to choose
     if room.dodobird_id:
@@ -387,26 +350,6 @@ async def _try_notify_accomplices(room: Room):
             })
 
 
-async def _try_send_delayed_hex(room: Room):
-    """If a delayed hex skill was just finalized, send hex info to the assigned player."""
-    hex_pid = room.hex_target_id
-    if not hex_pid:
-        return
-    # Only send if the player has a hex_skill and it's one of the delayed types
-    player = room.players.get(hex_pid)
-    if not player or player.hex_skill not in ("retirement_account", "handpicked"):
-        return
-    # Check if night_info already has hex_skill_info (set by _finalize_delayed_hex_skill)
-    night = room.night_info.get(hex_pid, {})
-    if not night.get("hex_skill_info"):
-        return
-    # Send game_info update to the hex holder
-    await send_to_player(hex_pid, {
-        "type": "game_info",
-        "data": night
-    })
-
-
 async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
     if not room or room.phase != GamePhase.NIGHT:
@@ -430,51 +373,6 @@ async def handle_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
         })
 
         await _try_notify_accomplices(room)
-        # Check for delayed hex skill finalization
-        await _try_send_delayed_hex(room)
-        await send_room_state(room)
-    else:
-        await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
-
-
-async def handle_drunk_choose_accomplice(ws: WebSocket, player_id: str, data: dict):
-    """Handle drunk mouse choosing their fake accomplice."""
-    room = game_manager.find_player_room(player_id)
-    if not room or room.phase != GamePhase.NIGHT:
-        return
-
-    target_id = data.get("target_id")
-    if not target_id:
-        return
-
-    success = room.drunk_choose_accomplice(player_id, target_id)
-    if success:
-        accomplice = room.players[target_id]
-
-        # Tell drunk mouse their choice was made (they think they're thief)
-        await ws.send_json({
-            "type": "accomplice_chosen",
-            "data": {
-                "accomplice_id": target_id,
-                "accomplice_name": accomplice.name,
-                "message": f"你选择了 {accomplice.name} 作为共犯"
-            }
-        })
-
-        # If resolution happened (thief chose drunk mouse + drunk mouse chose target),
-        # notify the real accomplice
-        if room.accomplice_id and room.accomplice_id == target_id:
-            thief = room.players[room.thief_id]
-            await send_to_player(target_id, {
-                "type": "you_are_accomplice",
-                "data": {
-                    "thief_id": room.thief_id,
-                    "thief_name": thief.name,
-                    "thief_dice": thief.display_dice,
-                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。\n（你是被🍺酒鬼鼠间接选中的）"
-                }
-            })
-
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为共犯"}})
@@ -506,8 +404,6 @@ async def handle_dodobird_choose_accomplice(ws: WebSocket, player_id: str, data:
 
         # Defer notification: _try_notify_accomplices checks if both chose
         await _try_notify_accomplices(room)
-        # Check for delayed hex skill finalization
-        await _try_send_delayed_hex(room)
         await send_room_state(room)
     else:
         await ws.send_json({"type": "error", "data": {"message": "无法选择该玩家作为假共犯"}})
@@ -530,16 +426,9 @@ async def handle_night_done(ws: WebSocket, player_id: str, data: dict):
 
 
 async def check_night_complete(room: Room):
-    if room.all_night_actions_done():
+    if room.phase == GamePhase.NIGHT and room.all_night_actions_done():
         room.start_day()
-        # Track day start time for lethal_tempo
-        import time as _time
-        room.day_start_time = _time.time()
         day_data = {"message": "天亮了！大家开始讨论吧。", "discussion_seconds": room.discussion_seconds}
-        # If lethal_tempo is active, include threshold info
-        if room.hex_type == "lethal_tempo":
-            day_data["lethal_tempo_threshold"] = len(room.players)
-            day_data["day_start_time"] = room.day_start_time
         await broadcast_to_room(room, {
             "type": "day_start",
             "data": day_data
@@ -549,11 +438,14 @@ async def check_night_complete(room: Room):
 
 async def handle_request_vote(ws: WebSocket, player_id: str, data: dict):
     room = game_manager.find_player_room(player_id)
-    if not room or room.phase != GamePhase.DAY:
+    if not room or room.phase != GamePhase.DAY or player_id not in room.players:
         return
 
     room.add_vote_request(player_id)
     player = room.players[player_id]
+    start_voting = room.vote_request_count() >= room.vote_request_required()
+    if start_voting:
+        room.start_voting()
     await broadcast_to_room(room, {
         "type": "vote_requested",
         "data": {
@@ -566,8 +458,7 @@ async def handle_request_vote(ws: WebSocket, player_id: str, data: dict):
     await send_room_state(room)
 
     # Check if majority reached
-    if room.vote_request_count() >= room.vote_request_required():
-        room.start_voting()
+    if start_voting:
         await broadcast_to_room(room, {
             "type": "vote_start",
             "data": {"message": "超过半数玩家发起投票，投票开始！"}
@@ -588,98 +479,15 @@ async def handle_vote(ws: WebSocket, player_id: str, data: dict):
     if success:
         await send_room_state(room)
 
-        if room.all_voted():
+        if room.phase == GamePhase.VOTING and room.all_voted():
             result = room.tally_votes()
-            if result.get("phase") == "assassinate":
-                # Enter ASSASSINATE phase - Tom gets 30s to guess Jerry
-                await broadcast_to_room(room, {
-                    "type": "assassinate_phase",
-                    "data": result
-                })
-                await send_room_state(room)
-                # Start 30s timer
-                asyncio.create_task(_assassinate_timer(room))
-            else:
-                await broadcast_to_room(room, {
-                    "type": "game_result",
-                    "data": result
-                })
-                await send_room_state(room)
-    else:
-        await ws.send_json({"type": "error", "data": {"message": err_msg}})
-
-
-async def _assassinate_timer(room: Room):
-    """30-second timer for ASSASSINATE phase. If Tom doesn't act, mice win."""
-    await asyncio.sleep(30)
-    if room.phase != GamePhase.ASSASSINATE:
-        return  # Already resolved
-    # Timeout: finalize as mouse win
-    result = room.finalize_assassinate()
-    await broadcast_to_room(room, {
-        "type": "game_result",
-        "data": result
-    })
-    await send_room_state(room)
-
-
-async def handle_assassinate(ws: WebSocket, player_id: str, data: dict):
-    """Handle Tom's assassination attempt."""
-    room = game_manager.find_player_room(player_id)
-    if not room:
-        return
-
-    target_id = data.get("target_id")
-    if not target_id:
-        return
-
-    result = room.tom_assassinate(player_id, target_id)
-    if not result.get("success"):
-        await ws.send_json({"type": "error", "data": {"message": result.get("error", "刺杀失败")}})
-        return
-
-    if result.get("correct"):
-        # Jerry found! Thief wins immediately regardless of phase
-        if room.phase == GamePhase.ASSASSINATE:
-            final = room.finalize_assassinate(result)
-        else:
-            # Assassination during non-ASSASSINATE phase -> instant game over
-            room.phase = GamePhase.RESULT
-            final = {
-                "winner": "thief",
-                "assassinate_result": "success",
-                "assassinate_target_id": target_id,
-                "tom_id": room.tom_id,
-                "tom_name": room.players[room.tom_id].name,
-                "jerry_id": room.jerry_id,
-                "jerry_name": room.players[room.jerry_id].name,
-                "thief_id": room.thief_id,
-                "thief_name": room.players[room.thief_id].name,
-                "accomplice_id": room.accomplice_id,
-                "accomplice_name": room.players[room.accomplice_id].name if room.accomplice_id else None,
-                "players": {pid: p.to_dict(reveal=True) for pid, p in room.players.items()},
-                "action_log": room.build_action_log(),
-            }
-        await broadcast_to_room(room, {"type": "game_result", "data": final})
-        await send_room_state(room)
-    else:
-        # Wrong guess
-        if room.phase == GamePhase.ASSASSINATE:
-            # In ASSASSINATE phase, wrong guess = mice win
-            final = room.finalize_assassinate(result)
-            await broadcast_to_room(room, {"type": "game_result", "data": final})
-            await send_room_state(room)
-        else:
-            # During other phases, assassination wasted - game continues
-            await ws.send_json({
-                "type": "assassinate_failed",
-                "data": {
-                    "message": "刺杀失败！你选错了人，刺杀技能已用尽。",
-                    "target_id": target_id,
-                    "jerry_id": result.get("jerry_id"),
-                }
+            await broadcast_to_room(room, {
+                "type": "game_result",
+                "data": result
             })
             await send_room_state(room)
+    else:
+        await ws.send_json({"type": "error", "data": {"message": err_msg}})
 
 
 async def handle_new_game(ws: WebSocket, player_id: str, data: dict):
@@ -689,6 +497,10 @@ async def handle_new_game(ws: WebSocket, player_id: str, data: dict):
 
     if room.creator_id != player_id:
         await ws.send_json({"type": "error", "data": {"message": "只有房主可以开启下一局"}})
+        return
+
+    if room.phase != GamePhase.RESULT:
+        await ws.send_json({"type": "error", "data": {"message": "本局结束后才能开启下一局"}})
         return
 
     room.reset_for_new_game()
@@ -777,13 +589,8 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
     # Check if all votes are now in
     if room.phase == GamePhase.VOTING and room.all_voted():
         result = room.tally_votes()
-        if result.get("phase") == "assassinate":
-            await broadcast_to_room(room, {"type": "assassinate_phase", "data": result})
-            await send_room_state(room)
-            asyncio.create_task(_assassinate_timer(room))
-        else:
-            await broadcast_to_room(room, {"type": "game_result", "data": result})
-            await send_room_state(room)
+        await broadcast_to_room(room, {"type": "game_result", "data": result})
+        await send_room_state(room)
 
 
 async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict):
@@ -806,65 +613,10 @@ async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict)
         val = int(data["max_dice"])
         if 6 <= val <= 10:
             room.max_dice = val
-    if "outsider_drunk" in data:
-        room.outsider_drunk = bool(data["outsider_drunk"])
     if "outsider_dodobird" in data:
         room.outsider_dodobird = bool(data["outsider_dodobird"])
-    if "outsider_tom_jerry" in data:
-        room.outsider_tom_jerry = bool(data["outsider_tom_jerry"])
-    if "hex_time_warp" in data:
-        room.hex_time_warp = bool(data["hex_time_warp"])
-    if "hex_perception_interference" in data:
-        room.hex_perception_interference = bool(data["hex_perception_interference"])
-    if "hex_retirement_account" in data:
-        room.hex_retirement_account = bool(data["hex_retirement_account"])
-    if "hex_lethal_tempo" in data:
-        room.hex_lethal_tempo = bool(data["hex_lethal_tempo"])
-    if "hex_handpicked" in data:
-        room.hex_handpicked = bool(data["hex_handpicked"])
 
     await send_room_state(room)
-
-
-async def handle_handpicked_choose(ws: WebSocket, player_id: str, data: dict):
-    """精心挑选: hex holder chooses which player to boost during voting."""
-    room = game_manager.find_player_room(player_id)
-    if not room or room.phase != GamePhase.VOTING:
-        return
-    if room.hex_type != "handpicked" or room.hex_target_id != player_id:
-        await ws.send_json({"type": "error", "data": {"message": "你没有精心挑选技能"}})
-        return
-    if room.handpicked_boost_target_id:
-        await ws.send_json({"type": "error", "data": {"message": "你已经选择过了，不能改选"}})
-        return
-    target_id = data.get("target_id")
-    if not target_id or target_id not in room.players or target_id == player_id:
-        await ws.send_json({"type": "error", "data": {"message": "无效的目标"}})
-        return
-    room.handpicked_boost_target_id = target_id
-    target = room.players[target_id]
-    await ws.send_json({
-        "type": "handpicked_chosen",
-        "data": {"target_id": target_id, "target_name": target.name, "message": f"你选择了 {target.name}，TA的投票对象将获得+2票"}
-    })
-    await send_room_state(room)
-
-    # Check if all votes (including handpicked choice) are now in
-    if room.all_voted():
-        result = room.tally_votes()
-        if result.get("phase") == "assassinate":
-            await broadcast_to_room(room, {
-                "type": "assassinate_phase",
-                "data": result
-            })
-            await send_room_state(room)
-            asyncio.create_task(_assassinate_timer(room))
-        else:
-            await broadcast_to_room(room, {
-                "type": "game_result",
-                "data": result
-            })
-            await send_room_state(room)
 
 
 MESSAGE_HANDLERS = {
@@ -874,13 +626,10 @@ MESSAGE_HANDLERS = {
     "ready": handle_ready,
     "peek": handle_peek,
     "choose_accomplice": handle_choose_accomplice,
-    "drunk_choose_accomplice": handle_drunk_choose_accomplice,
     "dodobird_choose_accomplice": handle_dodobird_choose_accomplice,
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,
-    "handpicked_choose": handle_handpicked_choose,
-    "assassinate": handle_assassinate,
     "new_game": handle_new_game,
     "update_room_settings": handle_update_room_settings,
     "leave_room": handle_leave_room,
@@ -910,13 +659,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             # After reconnection, check if all votes are now in
             if room.phase == GamePhase.VOTING and room.all_voted():
                 result = room.tally_votes()
-                if result.get("phase") == "assassinate":
-                    await broadcast_to_room(room, {"type": "assassinate_phase", "data": result})
-                    await send_room_state(room)
-                    asyncio.create_task(_assassinate_timer(room))
-                else:
-                    await broadcast_to_room(room, {"type": "game_result", "data": result})
-                    await send_room_state(room)
+                await broadcast_to_room(room, {"type": "game_result", "data": result})
+                await send_room_state(room)
         elif room and player_id in room.spectators:
             room.spectators[player_id].connected = True
             room.update_disconnect_timer()
@@ -950,6 +694,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 await websocket.send_json({"type": "error", "data": {"message": f"未知消息类型: {msg_type}"}})
 
     except WebSocketDisconnect:
+        if connections.get(player_id) is not websocket:
+            return
         connections.pop(player_id, None)
         room = game_manager.find_player_room(player_id)
         if room:
@@ -964,15 +710,6 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 room.spectators[player_id].connected = False
                 room.update_disconnect_timer()
 
-            # If no one is online, close the room immediately
-            if room.all_offline():
-                for pid in list(room.players) + list(room.spectators):
-                    player_rooms.pop(pid, None)
-                    await state_store.remove_player_room(pid)
-                game_manager.remove_room(room.id)
-                await delete_room_from_redis(room.id)
-            else:
-                await send_room_state(room)
-                save_room_to_redis(room)
+            await send_room_state(room)
 
 

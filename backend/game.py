@@ -24,6 +24,7 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         self.max_players = 8
         self.creator_id = creator_id
         self.day_timer_task: Optional[asyncio.Task] = None
+        self.game_start_pending = False
         self.night_actions_done: set[str] = set()
         self.vote_results: dict[str, int] = {}
         self.voted_player_id: Optional[str] = None
@@ -37,39 +38,12 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         self.vote_requests: set[str] = set()
         self.player_order: list[str] = []  # shuffled display order
         self.all_disconnected_since: Optional[float] = None  # timestamp when all players disconnected
-        # Outsider settings (which outsiders are enabled)
-        self.outsider_drunk: bool = False         # 酒鬼鼠 🍻
-        self.outsider_dodobird: bool = False      # 呆呆鸟 🐦
-        self.outsider_tom_jerry: bool = False     # Tom & Jerry 🐱🐭
-        # Hex skill settings (independent of outsiders)
-        self.hex_time_warp: bool = False           # 时空错乱 ⏳ (was trickster)
-        self.hex_perception_interference: bool = False  # 感知干涉 🌀 (was ratatouille)
-        self.hex_retirement_account: bool = False  # 退休账户 💰
-        self.hex_lethal_tempo: bool = False        # 致命节奏 🎵
-        self.hex_handpicked: bool = False          # 精心挑选 🎯
-        # Outsider game state
-        self.outsider_type: Optional[str] = None  # "drunk" | "dodobird" | "tom_jerry"
-        self.outsider_id: Optional[str] = None    # player id of the outsider (drunk/dodobird only)
-        # Hex skill game state
-        self.hex_type: Optional[str] = None       # "time_warp" | "perception_interference" | "retirement_account" | "lethal_tempo" | "handpicked"
-        self.hex_target_id: Optional[str] = None  # player who has the hex skill
-        self.poison_target_id: Optional[str] = None  # 感知干涉's poison target
-        self.poison_fake_dice: Optional[int] = None    # fake dice value for poisoned player
-        self.poison_mode: Optional[str] = None  # "wrong_time" or "wrong_info"
-        self.swap_info: Optional[dict] = None     # 时空错乱 swap info {pid1, pid2, dice1, dice2}
-        self.day_start_time: Optional[float] = None  # timestamp when day phase started (for lethal_tempo)
-        self.handpicked_boost_target_id: Optional[str] = None  # who the handpicked player chose to boost
-        self.hex_delayed: bool = False  # True if hex assignment is delayed until after accomplice is chosen
-        self.drunk_accomplice_id: Optional[str] = None  # who drunk mouse chose as accomplice
-        self.thief_raw_accomplice_id: Optional[str] = None  # who thief initially chose (before resolution)
-        self.dodobird_id: Optional[str] = None    # player id of the dodobird
-        self.dodobird_accomplice_id: Optional[str] = None  # who dodobird chose as fake accomplice
-        # Tom & Jerry state
-        self.tom_id: Optional[str] = None         # player id of Tom (assassin accomplice)
-        self.jerry_id: Optional[str] = None       # player id of Jerry (merlin mouse)
-        self.assassinate_target_id: Optional[str] = None  # who Tom chose to assassinate
-        self.assassinate_used: bool = False        # whether Tom has used assassination
-        self.assassinate_result: Optional[str] = None  # "success" | "fail" | None
+        self.outsider_dodobird = False
+        self.outsider_type = None
+        self.outsider_id = None
+        self.thief_raw_accomplice_id = None
+        self.dodobird_id = None
+        self.dodobird_accomplice_id = None
         self.spectators: dict[str, Player] = {}  # players watching the game (joined mid-game)
 
     def update_disconnect_timer(self):
@@ -137,7 +111,7 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
     def all_ready(self) -> bool:
         if len(self.players) < self.min_players:
             return False
-        return all(p.ready for p in self.players.values())
+        return all(p.ready and p.connected for p in self.players.values())
 
     def start_game(self):
         player_ids = list(self.players.keys())
@@ -171,30 +145,10 @@ class Room(NightInfoMixin, NightActionsMixin, VotingMixin, ActionLogMixin, RoomS
         self.night_info = {}
         self.outsider_type = None
         self.outsider_id = None
-        self.hex_type = None
-        self.hex_target_id = None
-        self.poison_target_id = None
-        self.poison_fake_dice = None
-        self.poison_mode = None
-        self.swap_info = None
-        self.day_start_time = None
-        self.handpicked_boost_target_id = None
-        self.hex_delayed = False
-        self.drunk_accomplice_id = None
         self.thief_raw_accomplice_id = None
         self.dodobird_id = None
         self.dodobird_accomplice_id = None
-        self.tom_id = None
-        self.jerry_id = None
-        self.assassinate_target_id = None
-        self.assassinate_used = False
-        self.assassinate_result = None
-
-        # Assign outsider (at most one per game: drunk, dodobird, or tom_jerry)
         self._assign_outsider()
-
-        # Assign hex skill (independent of outsider: time_warp or perception_interference)
-        self._assign_hex_skill()
 
         self.phase = GamePhase.NIGHT
 

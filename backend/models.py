@@ -10,7 +10,6 @@ class GamePhase(str, Enum):
     NIGHT = "night"
     DAY = "day"
     VOTING = "voting"
-    ASSASSINATE = "assassinate"
     RESULT = "result"
 
 
@@ -19,7 +18,6 @@ class Role(str, Enum):
     MOUSE = "mouse"
     ACCOMPLICE = "accomplice"
     DODOBIRD = "dodobird"
-    JERRY = "jerry"
 
 
 AVATARS = [
@@ -60,7 +58,7 @@ class Player:
         self.avatar = avatar or random_avatar()
         self.role: Optional[Role] = None
         self.dice: int = 0
-        self.display_dice: int = 0  # What the player thinks their dice is (may differ from actual if swapped)
+        self.display_dice: int = 0
         self.ready: bool = False
         self.connected: bool = True
         self.voted_for: Optional[str] = None
@@ -68,8 +66,7 @@ class Player:
         self.peek_target: Optional[str] = None
         self.peek_result: Optional[int] = None
         self.is_accomplice: bool = False
-        self.outsider: Optional[str] = None  # None, "drunk", "dodobird", "tom", "jerry"
-        self.hex_skill: Optional[str] = None  # None, "time_warp", "perception_interference", "retirement_account", "lethal_tempo", "handpicked"
+        self.outsider: Optional[str] = None  # None or "dodobird"
 
     def to_dict(self, reveal: bool = False, is_self: bool = False) -> dict:
         data = {
@@ -80,23 +77,11 @@ class Player:
             "connected": self.connected,
         }
         if is_self or reveal:
-            # Drunk mouse sees themselves as thief (except in reveal phase)
-            if is_self and not reveal and self.outsider == "drunk":
-                data["role"] = Role.THIEF
-            elif reveal and self.role == Role.JERRY:
-                # Jerry shows as mouse in result, jerry identity shown via outsider tag
-                data["role"] = Role.MOUSE
-            elif reveal and self.role == Role.DODOBIRD:
-                # Dodobird shows as mouse in result, dodobird identity shown via outsider tag
-                data["role"] = Role.MOUSE
-            else:
-                data["role"] = self.role
+            data["role"] = Role.MOUSE if reveal and self.role == Role.DODOBIRD else self.role
             data["dice"] = self.dice if reveal else self.display_dice
             data["is_accomplice"] = self.is_accomplice
             if reveal and self.outsider:
                 data["outsider"] = self.outsider
-            if reveal and self.hex_skill:
-                data["hex_skill"] = self.hex_skill
             if reveal and self.display_dice != self.dice:
                 data["display_dice"] = self.display_dice
                 data["actual_dice"] = self.dice
@@ -118,7 +103,6 @@ class Player:
         self.peek_result = None
         self.is_accomplice = False
         self.outsider = None
-        self.hex_skill = None
 
     def serialize(self) -> dict:
         """Serialize player state for Redis persistence."""
@@ -137,7 +121,6 @@ class Player:
             "peek_result": self.peek_result,
             "is_accomplice": self.is_accomplice,
             "outsider": self.outsider,
-            "hex_skill": self.hex_skill,
         }
 
     @classmethod
@@ -155,5 +138,4 @@ class Player:
         p.peek_result = data.get("peek_result")
         p.is_accomplice = data.get("is_accomplice", False)
         p.outsider = data.get("outsider")
-        p.hex_skill = data.get("hex_skill")
         return p

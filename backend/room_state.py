@@ -6,29 +6,7 @@ class RoomStateMixin:
 
     def _outsider_settings_list(self) -> list[str]:
         """Return list of enabled outsider type strings."""
-        result = []
-        if self.outsider_drunk:
-            result.append("drunk")
-        if self.outsider_dodobird:
-            result.append("dodobird")
-        if self.outsider_tom_jerry:
-            result.append("tom_jerry")
-        return result
-
-    def _hex_settings_list(self) -> list[str]:
-        """Return list of enabled hex skill type strings."""
-        result = []
-        if self.hex_time_warp:
-            result.append("time_warp")
-        if self.hex_perception_interference:
-            result.append("perception_interference")
-        if self.hex_retirement_account:
-            result.append("retirement_account")
-        if self.hex_lethal_tempo:
-            result.append("lethal_tempo")
-        if self.hex_handpicked:
-            result.append("handpicked")
-        return result
+        return ["dodobird"] if self.outsider_dodobird else []
 
     def to_list_item(self) -> dict:
         """Return a summary dict for room listing."""
@@ -43,7 +21,6 @@ class RoomStateMixin:
             "thief_see_all_dice": self.thief_see_all_dice,
             "max_dice": self.max_dice,
             "outsiders": self._outsider_settings_list(),
-            "hex_skills": self._hex_settings_list(),
         }
 
     def get_room_state(self, for_player_id: str = None) -> dict:
@@ -53,6 +30,13 @@ class RoomStateMixin:
             is_self = (pid == for_player_id)
             reveal = (self.phase == GamePhase.RESULT) or is_spectator
             players_data[pid] = p.to_dict(reveal=reveal, is_self=is_self)
+            if is_self and not reveal and p.is_accomplice and self.dodobird_id and not self.dodobird_accomplice_id:
+                players_data[pid]["role"] = Role.MOUSE
+                players_data[pid]["is_accomplice"] = False
+            if (is_self and not reveal and self.thief_raw_accomplice_id
+                    and pid == self.dodobird_accomplice_id and not p.is_accomplice):
+                players_data[pid]["role"] = Role.ACCOMPLICE
+                players_data[pid]["is_accomplice"] = True
 
         # Spectator list for display
         spectators_data = {}
@@ -71,7 +55,6 @@ class RoomStateMixin:
             "thief_see_all_dice": self.thief_see_all_dice,
             "max_dice": self.max_dice,
             "outsiders": self._outsider_settings_list(),
-            "hex_skills": self._hex_settings_list(),
             "spectators": spectators_data,
         }
 
@@ -89,35 +72,28 @@ class RoomStateMixin:
                 data["thief_id"] = self.thief_id
                 data["accomplice_id"] = self.accomplice_id
                 data["action_log"] = self.build_action_log()
+                data["dodobird_id"] = self.dodobird_id
             return data
 
         # Include personalized game info for all active game phases (Bug3: survives refresh)
         if for_player_id and self.phase != GamePhase.WAITING:
             player = self.players.get(for_player_id)
             if player:
-                # Drunk mouse continues to see fake thief role through all phases
-                display_role = player.role
-                if player.outsider == "drunk":
-                    display_role = Role.THIEF
-                my_info = {
-                    "role": display_role,
-                    "dice": player.display_dice,
-                    "is_accomplice": player.is_accomplice,
-                }
-                if player.outsider == "drunk":
-                    my_info["is_drunk"] = True
+                pending = bool(self.dodobird_id and not self.dodobird_accomplice_id)
+                my_info = {"role": Role.MOUSE if pending and player.is_accomplice else player.role,
+                           "dice": player.display_dice,
+                           "is_accomplice": player.is_accomplice and not pending}
                 if player.role == Role.DODOBIRD:
                     my_info["is_dodobird"] = True
-                if player.role == Role.JERRY:
-                    my_info["is_jerry"] = True
-                if player.outsider == "tom":
-                    my_info["is_tom"] = True
-                    my_info["can_assassinate"] = not self.assassinate_used
-                    if self.jerry_id:  # Tom doesn't know who Jerry is
-                        pass  # intentionally don't reveal jerry_id
                 # Always include night_info so refresh in any phase preserves game info
                 night = self.get_player_night_info(for_player_id)
                 my_info.update(night)
+                if player.is_accomplice and not pending:
+                    thief = self.players[self.thief_id]
+                    my_info.update({"role": Role.ACCOMPLICE, "is_accomplice": True,
+                                    "thief_id": self.thief_id, "thief_name": thief.name,
+                                    "thief_dice": thief.dice,
+                                    "message": f"奶酪大盗 {thief.name} 选择你作为共犯！你们同赢同输。"})
                 if self.phase == GamePhase.NIGHT:
                     my_info["can_end_night"] = self.can_end_night(for_player_id)
                     my_info["i_night_done"] = for_player_id in self.night_actions_done
@@ -130,38 +106,27 @@ class RoomStateMixin:
                 if is_fake_acc:
                     my_info["role"] = Role.ACCOMPLICE  # they think they are accomplice
                     my_info["is_accomplice"] = True  # they think they are
-                    my_info["is_fake_accomplice"] = True  # for result reveal
                     # Show dodobird as "thief" so fake accomplice sees dodobird's info
                     dodobird = self.players[self.dodobird_id]
                     my_info["thief_id"] = self.dodobird_id
                     my_info["thief_name"] = dodobird.name
                     my_info["thief_dice"] = dodobird.dice
+                    my_info["message"] = f"奶酪大盗 {dodobird.name} 选择你作为共犯！你们同赢同输。"
                 data["my_info"] = my_info
 
         if self.phase == GamePhase.NIGHT:
-            connected_count = sum(1 for p in self.players.values() if p.connected)
             data["night_done_count"] = len(self.night_actions_done)
-            data["night_total"] = connected_count
+            data["night_total"] = len(self.players)
 
         if self.phase == GamePhase.DAY:
             data["vote_request_count"] = self.vote_request_count()
             data["vote_request_required"] = self.vote_request_required()
             if for_player_id:
                 data["i_requested_vote"] = for_player_id in self.vote_requests
-            # Lethal tempo: send countdown only to the hex holder
-            if self.hex_type == "lethal_tempo" and self.day_start_time and for_player_id == self.hex_target_id:
-                data["day_start_time"] = self.day_start_time
-                data["lethal_tempo_threshold"] = len(self.players)  # minutes
-
         if self.phase == GamePhase.VOTING:
             voted_count = sum(1 for p in self.players.values() if p.voted_for is not None)
             data["voted_count"] = voted_count
-            data["total_voters"] = sum(1 for p in self.players.values() if p.connected)
-            # Handpicked: let the hex holder know they need to choose a boost target
-            if for_player_id and self.hex_type == "handpicked" and self.hex_target_id == for_player_id:
-                data["is_handpicked"] = True
-                data["handpicked_boost_target_id"] = self.handpicked_boost_target_id
-
+            data["total_voters"] = len(self.players)
         if self.phase == GamePhase.VOTING:
             # Accomplice (real or fake) needs to know thief_id to disable voting
             if for_player_id:
@@ -180,17 +145,6 @@ class RoomStateMixin:
                     elif for_player_id == self.thief_id:
                         data["vote_only_target"] = self.dodobird_id
 
-        if self.phase == GamePhase.ASSASSINATE:
-            data["tom_id"] = self.tom_id
-            data["assassinate_seconds"] = 30
-            data["voted_player_id"] = self.voted_player_id
-            data["voted_player_is_thief"] = self.voted_player_id == self.thief_id
-            if for_player_id:
-                p = self.players.get(for_player_id)
-                if p and p.outsider == "tom":
-                    data["is_tom"] = True
-                    data["can_assassinate"] = not self.assassinate_used
-
         if self.phase == GamePhase.RESULT:
             data["vote_results"] = self.vote_results
             data["voted_player_id"] = self.voted_player_id
@@ -200,12 +154,5 @@ class RoomStateMixin:
             data["action_log"] = self.build_action_log()
             if self.dodobird_id:
                 data["dodobird_id"] = self.dodobird_id
-            if self.tom_id:
-                data["tom_id"] = self.tom_id
-            if self.jerry_id:
-                data["jerry_id"] = self.jerry_id
-            if self.assassinate_result:
-                data["assassinate_result"] = self.assassinate_result
-                data["assassinate_target_id"] = self.assassinate_target_id
 
         return data

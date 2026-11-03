@@ -156,7 +156,7 @@ export default function useWebSocket() {
           addNotification(msg.data.message, 'info');
           break;
         case 'game_info':
-          // Merge game_info updates (e.g. delayed hex skill assignment)
+          // Merge game info updates
           setGameInfo(prev => prev ? { ...prev, ...msg.data } : msg.data);
           break;
         case 'peek_result':
