@@ -19,7 +19,7 @@ function AppContent() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/holdem">
       <AppContent />
     </BrowserRouter>
   );

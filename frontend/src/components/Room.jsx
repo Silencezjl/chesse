@@ -176,6 +176,7 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
 }
 
 export default function Room({ ws }) {
+  const embedded = window.self !== window.top;
   const { roomState, playerId, gameInfo, screenShake, send } = ws;
   const [copied, setCopied] = useState(false);
   if (!roomState) return null;
@@ -318,7 +319,7 @@ export default function Room({ ws }) {
             {phase === 'voting' && '🗳️ 投票'}
             {phase === 'result' && '🏆 结果'}
           </div>
-          {(phase === 'waiting' || isSpectator) && (
+          {!embedded && (phase === 'waiting' || isSpectator) && (
             <button onClick={handleLeave} className="p-2 hover:bg-white/10 rounded-lg transition text-white/50 hover:text-red-400">
               <LogOut size={18} />
             </button>
@@ -327,7 +328,7 @@ export default function Room({ ws }) {
       </div>
 
       {/* Room Settings (creator only, waiting phase) */}
-      {phase === 'waiting' && isCreator && (
+      {phase === 'waiting' && isCreator && !embedded && (
         <div className="glass-card p-4">
           <div className="text-sm text-white/50 mb-3 flex items-center gap-1">
             <Settings size={14} /> 房间设置（房主）
@@ -696,15 +697,15 @@ export default function Room({ ws }) {
           </div>
         )}
 
-        {phase === 'result' && isCreator && (
+        {phase === 'result' && isCreator && !embedded && (
           <button onClick={handleNewGame} className="btn-primary">
             <span className="flex items-center gap-2">
               <RotateCcw size={16} /> 再来一局
             </span>
           </button>
         )}
-        {phase === 'result' && !isCreator && (
-          <span className="text-sm text-white/40">等待房主开启下一局...</span>
+        {phase === 'result' && (embedded || !isCreator) && (
+          <span className="text-sm text-white/40">{embedded ? '本局结束，请返回公共房间选择下一局。' : '等待房主开启下一局...'}</span>
         )}
       </div>
     </div>

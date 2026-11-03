@@ -1,46 +1,38 @@
 services:
   redis:
-    image: docker.m.daocloud.io/redis:7-alpine
-    container_name: cheese-redis
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - lobby_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
-
-  cheese-backend:
+      retries: 10
+  backend:
     build:
       context: .
       target: backend
-    container_name: cheese-backend
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim}
     restart: unless-stopped
-    working_dir: /app/backend
     depends_on:
       redis:
         condition: service_healthy
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
     environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-      - REDIS_URL=redis://redis:6379/0
-
-  cheese-frontend:
+      PYTHONUNBUFFERED: '1'
+      REDIS_URL: redis://redis:6379/0
+  frontend:
     build:
       context: .
       target: frontend
-    container_name: cheese-frontend
-    ports:
-      - "80:80"
+      args:
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
+    ports:
+      - "${LOBBY_PORT:-8088}:80"
     depends_on:
-      - cheese-backend
-
+      - backend
 volumes:
-  redis_data:
+  lobby_redis_data:

@@ -43,7 +43,10 @@ async def _save_room_to_redis(room_data: dict):
 
 def save_room_to_redis(room: Room):
     """Fire-and-forget: schedule Redis save without blocking the event loop."""
-    asyncio.create_task(_save_room_to_redis(room.serialize()))
+    async def save_current():
+        if game_manager.rooms.get(room.id) is room:
+            await _save_room_to_redis(room.serialize())
+    asyncio.create_task(save_current())
 
 
 async def delete_room_from_redis(room_id: str):
@@ -80,6 +83,9 @@ async def periodic_save_task():
 async def startup_event():
     # Connect to Redis
     await state_store.connect()
+    from lobby import api as lobby_api
+    lobby_api.configure(state_store._redis, game_manager, state_store, connections, player_rooms)
+    await lobby_api.reset_presence()
 
     # Restore rooms from Redis
     if state_store.available:
@@ -109,6 +115,8 @@ async def shutdown_event():
     for room in game_manager.rooms.values():
         await _save_room_to_redis(room.serialize())
     await state_store.close()
+    from games.holdem.redis_manager import close_redis
+    await close_redis()
     logger.info("Saved all rooms and closed Redis connection")
 
 
@@ -640,6 +648,25 @@ MESSAGE_HANDLERS = {
 
 @app.websocket("/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, player_id: str):
+    from lobby import api as lobby_api
+    if not lobby_api.redis:
+        await websocket.close(code=1013)
+        return
+    public_id = await lobby_api.db().get(lobby_api.PLAYER_PREFIX + player_id)
+    if not public_id:
+        await websocket.close(code=4403)
+        return
+    if public_id in lobby_api.transitions:
+        await websocket.close(code=1013)
+        return
+    try:
+        public_room = await lobby_api.load(public_id)
+    except Exception:
+        await websocket.close(code=4404)
+        return
+    if public_room.data['game_id'] != 'cheese' or player_id not in public_room.data['members']:
+        await websocket.close(code=4403)
+        return
     await websocket.accept()
     connections[player_id] = websocket
 
@@ -683,6 +710,11 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             msg_type = msg.get("type")
             msg_data = msg.get("data", {})
 
+            from lobby import api as lobby_api
+            if msg_type in {"create_room", "join_room", "leave_room", "new_game", "update_room_settings"}:
+                await websocket.send_json({"type": "error", "data": {"message": "请在公共房间管理游戏和成员"}})
+                continue
+
             if msg_type == "ping":
                 await websocket.send_json({"type": "pong", "data": {}})
                 continue
@@ -711,5 +743,24 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 room.update_disconnect_timer()
 
             await send_room_state(room)
+
+
+from lobby.api import router as lobby_router
+app.include_router(lobby_router)
+
+
+@app.websocket("/holdem-ws/{room_id}/{player_id}")
+async def holdem_socket(websocket: WebSocket, room_id: str, player_id: str):
+    from lobby import api as lobby_api
+    from games.holdem.main import websocket_endpoint as game_socket
+    try:
+        room = await lobby_api.load(room_id)
+    except Exception:
+        await websocket.close(code=4404)
+        return
+    if room_id in lobby_api.transitions or room.data['game_id'] != 'holdem' or player_id not in room.data['members']:
+        await websocket.close(code=4403)
+        return
+    await game_socket(websocket, room_id, player_id)
 
 

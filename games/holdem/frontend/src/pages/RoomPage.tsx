@@ -59,6 +59,10 @@ export default function RoomPage() {
   const [betAnim, setBetAnim] = useState<{ amount: number; startPos: { x: number; y: number }; endPos: { x: number; y: number } } | null>(null);
 
   const handleLeave = useCallback(async () => {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'return_to_lobby' }, window.location.origin);
+      return;
+    }
     if (roomId && playerId) {
       try { await leaveRoom(roomId, playerId); } catch {}
     }
@@ -237,7 +241,7 @@ export default function RoomPage() {
       <FinalStandings 
         standings={standings} 
         room={room} 
-        onClose={() => { setStandings(null); setRoomId(null); navigate('/'); }} 
+        onClose={() => { if (window.parent !== window) window.parent.postMessage({type: 'return_to_lobby'}, window.location.origin); else { setStandings(null); setRoomId(null); navigate('/'); } }}
       />
     );
   }
@@ -297,6 +301,7 @@ export default function RoomPage() {
               onRebuy={handleRebuy}
             />
             <SeatGrid room={room} playerId={playerId} onSit={handleSit} onStand={handleStand} />
+            {isOwner && <button onClick={handleEndGame} className="w-full py-2 bg-red-900/60 border border-red-700 rounded-xl text-red-300">结束筹码局</button>}
           </>
         ) : isWaiting && !firstHand ? (
           <>

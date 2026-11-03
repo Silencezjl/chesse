@@ -11,6 +11,8 @@ Game industry pattern: in-memory hot state + Redis persistent snapshots.
 import orjson
 import os
 import logging
+import asyncio
+from collections import defaultdict
 from typing import Optional
 
 import redis.asyncio as redis
@@ -21,9 +23,9 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 # Redis key prefixes
-ROOM_KEY_PREFIX = "cheese:room:"
-PLAYER_ROOM_KEY = "cheese:player_rooms"
-ROOMS_INDEX_KEY = "cheese:rooms"
+ROOM_KEY_PREFIX = "lobby:game:cheese:room:"
+PLAYER_ROOM_KEY = "lobby:game:cheese:player_rooms"
+ROOMS_INDEX_KEY = "lobby:game:cheese:rooms"
 
 
 class StateStore:
@@ -31,6 +33,7 @@ class StateStore:
 
     def __init__(self):
         self._redis: Optional[redis.Redis] = None
+        self._room_locks = defaultdict(asyncio.Lock)
 
     async def connect(self):
         """Connect to Redis with optimized connection pool."""
@@ -67,12 +70,14 @@ class StateStore:
             return
         room_id = room_data["id"]
         try:
-            pipe = self._redis.pipeline()
-            pipe.set(f"{ROOM_KEY_PREFIX}{room_id}", orjson.dumps(room_data).decode())
-            pipe.sadd(ROOMS_INDEX_KEY, room_id)
-            await pipe.execute()
+            async with self._room_locks[room_id]:
+                pipe = self._redis.pipeline()
+                pipe.set(f"{ROOM_KEY_PREFIX}{room_id}", orjson.dumps(room_data).decode())
+                pipe.sadd(ROOMS_INDEX_KEY, room_id)
+                await pipe.execute()
         except Exception as e:
             logger.error(f"Failed to save room {room_id}: {e}")
+            raise
 
     async def load_room(self, room_id: str) -> Optional[dict]:
         """Load serialized room state from Redis."""
@@ -90,12 +95,14 @@ class StateStore:
         if not self._redis:
             return
         try:
-            pipe = self._redis.pipeline()
-            pipe.delete(f"{ROOM_KEY_PREFIX}{room_id}")
-            pipe.srem(ROOMS_INDEX_KEY, room_id)
-            await pipe.execute()
+            async with self._room_locks[room_id]:
+                pipe = self._redis.pipeline()
+                pipe.delete(f"{ROOM_KEY_PREFIX}{room_id}")
+                pipe.srem(ROOMS_INDEX_KEY, room_id)
+                await pipe.execute()
         except Exception as e:
             logger.error(f"Failed to delete room {room_id}: {e}")
+            raise
 
     async def load_all_rooms(self) -> list[dict]:
         """Load all room states from Redis."""

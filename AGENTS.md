@@ -1,40 +1,30 @@
 # 项目与开发环境
 
-> 游戏大厅合并进行中：开始开发前先阅读 `HANDOFF.md`，其中记录了已完成内容、未接通的功能和部署注意事项。
+开始开发前阅读 `README.md` 和 `HANDOFF.md`。本项目是统一游戏大厅，包含奶酪大盗和 Holdem 线下筹码管理。
 
-- 本项目是「奶酪大盗」多人社交推理游戏。后端在 `backend/`，使用 Python、FastAPI 和 WebSocket；游戏规则、房间状态及序列化分别分布在 `game.py`、`room_state.py`、`night_actions.py`、`voting.py`、`serialization.py` 等文件中。
-- 前端在 `frontend/`，使用 Preact（通过兼容别名支持 React 导入）、Vite 和 Tailwind CSS。`src/hooks/useWebSocket.js` 管理与后端的连接，`src/components/` 包含游戏界面。
-- Redis 用于状态快照与恢复，默认地址是 `redis://localhost:6379/0`，可通过 `REDIS_URL` 覆盖。Redis 不可用时后端自动使用内存模式，重启后状态不会保留。
+- `backend/lobby/` 管理公共房间、游戏注册与运行时；`backend/` 是 FastAPI 入口和奶酪规则，`backend/games/holdem/` 是 Holdem 后端。
+- `lobby-web/` 是大厅前端；`frontend/` 是 Preact 奶酪界面；`games/holdem/frontend/` 是 React/TypeScript Holdem 界面。Nginx 提供统一 HTTP/WebSocket 入口。
+- Redis 是公共大厅与 Holdem 必需的；各模块使用 `lobby:` 前缀隔离存储。不得清空或覆盖旧项目 Redis 数据，禁止对现有 volume 执行删除操作。当前后端只支持单 worker。
 
-## 本地开发
+## 启动
 
-现有 Conda 环境名为 `chesse-dev`，已验证 Python 3.11；前端已验证 Node.js 24。依赖清单分别为 `backend/requirements.txt` 和 `frontend/package-lock.json`。若环境尚不存在，可执行：
-
-```bash
-conda create -n chesse-dev python=3.11
-conda activate chesse-dev
-python -m pip install -r backend/requirements.txt
-cd frontend && npm ci
-```
-
-在两个终端中分别启动（先确认端口未被现有服务占用）：
+完整大厅使用 Docker Compose：
 
 ```bash
-conda activate chesse-dev
-cd backend
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+docker compose up -d --build
 ```
 
-```bash
-cd frontend
-npm run dev -- --host 127.0.0.1
-```
-
-访问 http://localhost:3000，后端 API 文档为 http://localhost:8000/docs。Vite 将 `/ws` 代理到后端 8000 端口。开发服务器在各自终端中用 Ctrl+C 停止。
+默认访问 `http://localhost:8088`。`dify` 开发机的隔离实例使用项目名 `chesse-integration` 和端口 18088，项目本地 `.env` 指定本机缓存镜像；使用 `docker compose -p chesse-integration up -d --build`。其他环境和配置项见 `README.md`。单独启动原奶酪 Vite 服务器不会提供完整大厅。
 
 ## 验证
 
-- 后端依赖检查：`conda run -n chesse-dev python -m pip check`。
-- 前端构建：`cd frontend && npm run build`。
-- 后端测试：`cd backend && python -m unittest discover -s tests -v`（使用 `chesse-dev` 环境）；涉及游戏流程的修改应额外进行多人房间和 WebSocket 的实际验证。
-- Docker Compose 部署方式见 `README.md`；本地开发不需要 Docker 或 Redis。
+使用 Python 3.11（本地已有 `chesse-dev` Conda 环境）及 Node.js：
+
+```bash
+(cd backend && python -m unittest discover -s tests -v)
+(cd frontend && npm ci && npm run build)
+(cd games/holdem/frontend && npm ci && npm run build)
+LOBBY_URL=http://localhost:8088 python scripts/smoke_lobby.py
+```
+
+冒烟脚本会创建测试房间，应针对隔离开发实例运行。涉及规则、重连或存储的改动还应模拟多人 WebSocket 对局及重启恢复。

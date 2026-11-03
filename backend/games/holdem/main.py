@@ -288,6 +288,9 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
                 if not room:
                     await ws.send_json({"type": "error", "message": "Room no longer exists"})
                     break
+                if room.status == RoomStatus.FINISHED:
+                    await ws.send_json({"type": "error", "message": "筹码局已结束，请返回公共房间"})
+                    continue
 
                 if msg_type == "sit":
                     room, resp = handle_sit(room, player_id, data)
@@ -326,6 +329,9 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
     except Exception as e:
         print(f"WS error: {e}")
     finally:
+        # A replaced connection must not mark a newer session disconnected.
+        if manager.rooms.get(room_id, {}).get(player_id) is not ws:
+            return
         manager.disconnect(room_id, player_id)
         async with get_room_lock(room_id):
             room = await get_room(room_id)

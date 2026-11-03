@@ -54,5 +54,5 @@ export async function getRandomProfile() {
 }
 
 export function connectWs(roomId: string, playerId: string): WebSocket {
-  return new WebSocket(`${WS_BASE}/ws/${roomId}/${playerId}`);
+  return new WebSocket(`${WS_BASE}/holdem-ws/${roomId}/${playerId}`);
 }

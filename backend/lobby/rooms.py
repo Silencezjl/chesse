@@ -2,6 +2,7 @@
 from copy import deepcopy
 import secrets
 import string
+import uuid
 
 from .games import GAMES, GameAdapter
 
@@ -42,7 +43,8 @@ class LobbyRoom:
             return
         if len(self.data["members"]) >= 12:
             raise RoomError("房间已满")
-        if self.data["game_id"] is not None:
+        game_id = self.data["game_id"]
+        if game_id is not None and not GAMES[game_id].can_switch(self.data["game_state"]):
             raise RoomError("游戏进行期间暂不能加入房间")
         self.data["members"][player_id] = self._member(name, avatar)
 
@@ -75,3 +77,4 @@ class LobbyRoom:
             raise RoomError(str(exc)) from exc
         self.data["game_id"] = game_id
         self.data["game_state"] = snapshot
+        self.data["session_id"] = uuid.uuid4().hex
