@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="120" height="120">
+  <title>Poker Chip 500</title>
+  <g id="chip-500">
+    <circle cx="50" cy="50" r="48" fill="#7B1FA2" stroke="#4A148C" stroke-width="2"/>
+    <circle cx="50" cy="50" r="40" fill="none" stroke="#FFD54F" stroke-width="14" stroke-dasharray="16 16" transform="rotate(22.5 50 50)"/>
+    <circle cx="50" cy="50" r="30" fill="none" stroke="#6A1B9A" stroke-width="2"/>
+    <circle cx="50" cy="50" r="28" fill="#FFFAF0"/>
+    <text x="50" y="58" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="22" text-anchor="middle" fill="#212121">500</text>
+  </g>
+</svg>
