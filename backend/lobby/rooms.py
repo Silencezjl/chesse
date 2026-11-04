@@ -1,5 +1,7 @@
 """Common room state and transition rules, independent of transport and storage."""
 from copy import deepcopy
+import hashlib
+import hmac
 import secrets
 import string
 import uuid
@@ -22,7 +24,7 @@ class LobbyRoom:
     def __init__(self, room_id: str, owner_id: str, name: str, avatar: str):
         self.data = {"id": room_id, "owner_id": owner_id,
                      "members": {owner_id: self._member(name, avatar)},
-                     "game_id": None, "game_state": None}
+                     "game_id": None, "game_state": None, "created_at": time.time()}
         self.upgrade()
 
     @staticmethod
@@ -42,6 +44,20 @@ class LobbyRoom:
     def snapshot(self) -> dict:
         return deepcopy(self.data)
 
+    def set_password(self, password):
+        if password and (not 4 <= len(password) <= 20 or any(c.isspace() for c in password)):
+            raise RoomError('密码需为 4–20 位非空白字符')
+        salt = secrets.token_hex(16)
+        self.data['password_hash'] = (salt + ':' + hashlib.scrypt(password.encode(), salt=salt.encode(), n=16384, r=8, p=1).hex()) if password else None
+
+    def check_password(self, password):
+        saved = self.data.get('password_hash')
+        if not saved:
+            return True
+        salt, expected = saved.split(':')
+        actual = hashlib.scrypt(password.encode(), salt=salt.encode(), n=16384, r=8, p=1).hex()
+        return hmac.compare_digest(expected, actual)
+
     def join(self, player_id: str, name: str, avatar: str):
         if player_id in self.data["members"]:
             self.data["members"][player_id]["connected"] = True
@@ -51,12 +67,12 @@ class LobbyRoom:
         if player_id in self.data["banned"]:
             raise RoomError("你已被移出此房间")
         game_id = self.data["game_id"]
-        if self.data["stage"] == "playing":
-            raise RoomError("游戏进行期间暂不能加入房间")
         self.data["members"][player_id] = self._member(name, avatar)
         self.data["members"][player_id]["ready"] = False
         limit = CATALOG.get(game_id, {}).get("maximum", 12)
-        if len(self.data["seats"]) < limit:
+        if self.data['stage'] in ('playing', 'finished'):
+            self.data['pending_member_ids'].append(player_id)
+        elif self.data['stage'] != 'countdown' and len(self.data["seats"]) < limit:
             self.data["seats"].append(player_id)
             self.invalidate()
 
@@ -70,8 +86,10 @@ class LobbyRoom:
     def leave(self, player_id: str):
         if player_id not in self.data["members"]:
             raise RoomError("你不在此房间中")
-        if self.data["stage"] == "playing":
+        if self.data["stage"] == "playing" and player_id not in self.data['pending_member_ids']:
             raise RoomError("请先结束当前游戏")
+        if player_id in self.data['pending_member_ids']:
+            self.data['pending_member_ids'].remove(player_id)
         del self.data["members"][player_id]
         if player_id in self.data["seats"]:
             self.data["seats"].remove(player_id)
@@ -111,6 +129,9 @@ class LobbyRoom:
         d.setdefault('revision', 0)
         d.setdefault('countdown', None)
         d.setdefault('banned', [])
+        d.setdefault('password_hash', None)
+        d.setdefault('created_at', 0)
+        d.setdefault('pending_member_ids', [])
         d.setdefault('owner_offline_since', None)
         d.setdefault('start_error', '')
         for member in d['members'].values():

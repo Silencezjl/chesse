@@ -53,6 +53,8 @@ export default function useWebSocket() {
   const [roomList, setRoomList] = useState([]);
   const [latency, setLatency] = useState(null);
   const wsRef = useRef(null);
+  const pendingRef = useRef(false);
+  const [actionPending, setActionPending] = useState(false);
   const reconnectTimer = useRef(null);
   const heartbeatTimer = useRef(null);
   const reconnectAttempts = useRef(0);
@@ -94,7 +96,7 @@ export default function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnected(true);
+      setConnected(false);
       reconnectAttempts.current = 0;
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
@@ -126,6 +128,7 @@ export default function useWebSocket() {
           }
           break;
         case 'room_state':
+          setConnected(true); pendingRef.current = false; setActionPending(false);
           setRoomState(msg.data);
           // Save room_id to localStorage for rejoin
           if (msg.data.room_id) {
@@ -153,7 +156,6 @@ export default function useWebSocket() {
           break;
         case 'game_start':
           setGameInfo(msg.data);
-          addNotification(msg.data.message, 'info');
           break;
         case 'game_info':
           // Merge game info updates
@@ -161,15 +163,14 @@ export default function useWebSocket() {
           break;
         case 'peek_result':
           setGameInfo(prev => ({ ...prev, peek: msg.data }));
-          addNotification(`${msg.data.target_name} 的骰子点数是 ${msg.data.dice}`, 'success');
+
           break;
         case 'accomplice_chosen':
           setGameInfo(prev => ({ ...prev, accomplice: msg.data }));
-          addNotification(msg.data.message, 'success');
           break;
         case 'you_are_accomplice':
           setGameInfo(prev => ({ ...prev, ...msg.data, role: 'accomplice' }));
-          addNotification(msg.data.message, 'warning');
+          // Private identity stays behind the player's reveal control.
           // Trigger full-screen shake
           setScreenShake(true);
           setTimeout(() => setScreenShake(false), 1500);
@@ -203,6 +204,7 @@ export default function useWebSocket() {
           saveRoomId(null);
           break;
         case 'error':
+          pendingRef.current = false; setActionPending(false);
           addNotification(msg.data.message, 'error');
           break;
         default:
@@ -210,9 +212,11 @@ export default function useWebSocket() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      pendingRef.current = false; setActionPending(false);
       setConnected(false);
       stopHeartbeat();
+      if ([4001,4403,4404].includes(event.code)) return;
       // Exponential backoff: 1s, 2s, 4s, 8s, max 15s
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 15000);
       reconnectAttempts.current += 1;
@@ -240,6 +244,10 @@ export default function useWebSocket() {
           }
           reconnectAttempts.current = 0;
           connect();
+        } else {
+          setConnected(false);
+          wsRef.current.send(JSON.stringify({type:'get_game_info',data:{}}));
+          wsRef.current.send(JSON.stringify({type:'rejoin_room',data:{room_id:getSavedRoomId()}}));
         }
       }
     };
@@ -247,20 +255,22 @@ export default function useWebSocket() {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      if (wsRef.current) wsRef.current.close();
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, [connect]);
 
   const send = useCallback((type, data = {}) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current?.readyState === WebSocket.OPEN && !pendingRef.current) {
+      pendingRef.current = true; setActionPending(true);
       wsRef.current.send(JSON.stringify({ type, data }));
     }
   }, []);
 
   return {
     connected,
+    actionPending,
     playerId,
     roomState,
     roomList,

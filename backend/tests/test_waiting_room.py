@@ -51,7 +51,9 @@ class WaitingRoomTest(unittest.TestCase):
         for p in r.data['seats']: r.ready(p, True, r.data['revision'])
         self.assertTrue(r.can_start())
         r.data['stage']='playing'
-        with self.assertRaises(RoomError): r.join('new', '朋友', '🐸')
+        r.join('new', '朋友', '🐸')
+        self.assertIn('new', r.data['pending_member_ids'])
+        self.assertNotIn('new', r.data['seats'])
         with self.assertRaises(RoomError): r.seat('p0','p1',False)
         r.data['stage']='waiting'
         with self.assertRaises(RoomError): r.configure_game('p1','bluff',{})

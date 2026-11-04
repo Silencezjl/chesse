@@ -14,6 +14,9 @@ export function useRoomWebSocket(roomId: string | null) {
   } = useStore();
 
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingRef = useRef(false);
+  const [actionPending, setActionPending] = useState(false);
+  const disposed = useRef(false);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
   const pingTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -32,7 +35,7 @@ export function useRoomWebSocket(roomId: string | null) {
     const socket = connectWs(roomId, playerId);
 
     socket.onopen = () => {
-      setConnected(true);
+      setConnected(false);
       setError(null);
       // Start ping interval
       pingTimer.current = setInterval(() => {
@@ -48,6 +51,7 @@ export function useRoomWebSocket(roomId: string | null) {
         if (data.type === 'pong') {
           setLatency(Date.now() - data.timestamp);
         } else if (data.type === 'room_state') {
+          pendingRef.current = false; setActionPending(false); setConnected(true);
           setRoom(data.room);
           if (data.room.status === 'finished' && data.standings) {
             setStandings(data.standings as Standing[]);
@@ -92,6 +96,7 @@ export function useRoomWebSocket(roomId: string | null) {
           }
           addEvent(data.event + (data.detail ? `: ${data.detail}` : ''));
         } else if (data.type === 'error') {
+          pendingRef.current = false; setActionPending(false);
           setError(data.message);
           setTimeout(() => setError(null), 3000);
         }
@@ -99,9 +104,10 @@ export function useRoomWebSocket(roomId: string | null) {
     };
 
     socket.onclose = (event) => {
-      setConnected(false);
+      setConnected(false); pendingRef.current = false; setActionPending(false);
+      if (disposed.current) return;
       if (pingTimer.current) clearInterval(pingTimer.current);
-      if (event.code === 4001) {
+      if ([4001,4403,4404,1000].includes(event.code)) {
         // Invalid room or player - redirect to home
         setRoomId(null);
         navigate('/');
@@ -123,8 +129,19 @@ export function useRoomWebSocket(roomId: string | null) {
       navigate('/');
       return;
     }
+    disposed.current = false;
     connect();
+    const visible = () => {
+      if (document.hidden) return;
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        setConnected(false);
+        wsRef.current.send(JSON.stringify({type:'refresh'}));
+      } else { if(reconnectTimer.current) clearTimeout(reconnectTimer.current); connect(); }
+    };
+    document.addEventListener('visibilitychange', visible);
     return () => {
+      document.removeEventListener('visibilitychange', visible);
+      disposed.current = true;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (pingTimer.current) clearInterval(pingTimer.current);
       if (wsRef.current) wsRef.current.close();
@@ -132,13 +149,15 @@ export function useRoomWebSocket(roomId: string | null) {
   }, [playerId, roomId, connect, navigate]);
 
   const send = useCallback((data: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && useStore.getState().connected && !pendingRef.current) {
+      pendingRef.current = true; setActionPending(true);
       wsRef.current.send(JSON.stringify(data));
     }
   }, []);
 
   return {
     wsRef,
+    actionPending,
     send,
     winAnimPlayingRef,
     winAnimPlaying,

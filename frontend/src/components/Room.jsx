@@ -179,6 +179,18 @@ export default function Room({ ws }) {
   const embedded = window.self !== window.top;
   const { roomState, playerId, gameInfo, screenShake, send } = ws;
   const [copied, setCopied] = useState(false);
+  const [showPrivate, setShowPrivate] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  useEffect(() => {
+    const hide = () => { setShowPrivate(false); setConfirmation(null); };
+    const message = e => { if(e.origin === location.origin && e.source === window.parent && e.data?.type === 'conceal_private') hide(); };
+    document.addEventListener('visibilitychange', hide); window.addEventListener('message', message);
+    return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('message', message); };
+  }, []);
+  useEffect(() => { setConfirmation(null); }, [roomState]);
+  useEffect(() => { setShowPrivate(false); }, [roomState?.phase === 'night']);
+  useEffect(() => { if(embedded) window.parent.postMessage({type:'game_connection', connected:ws.connected}, location.origin); }, [ws.connected]);
+  const choose = (type, target, label) => setConfirmation({type, target, label});
   if (!roomState) return null;
 
   const { room_id, phase, players, player_count, min_players, max_players, creator_id } = roomState;
@@ -202,31 +214,15 @@ export default function Room({ ws }) {
   };
 
   const handlePeek = (targetId) => {
-    send('peek', { target_id: targetId });
+    choose('peek', targetId, '偷看这位玩家的骰子');
   };
 
   const handleAccomplice = (targetId) => {
-    send('choose_accomplice', { target_id: targetId });
+    choose('choose_accomplice', targetId, '选择这位玩家为共犯');
   };
 
   const handleDodobirdAccomplice = (targetId) => {
-    // Check if target wakes at the same time as thief or dodobird using all_dice
-    const allDice = gameInfo?.all_dice || {};
-    const thiefId = gameInfo?.thief_id;
-    const myDice = allDice[playerId];
-    const targetDice = allDice[targetId];
-    const thiefDice = thiefId ? allDice[thiefId] : null;
-    const warnings = [];
-    if (thiefDice != null && targetDice != null && targetDice === thiefDice) {
-      warnings.push('该玩家和奶酪大盗同时睁眼');
-    }
-    if (myDice != null && targetDice != null && targetDice === myDice) {
-      warnings.push('该玩家和你同时睁眼');
-    }
-    if (warnings.length > 0 && !window.confirm(`⚠️ ${warnings.join('，')}，确认选择吗？`)) {
-      return;
-    }
-    send('dodobird_choose_accomplice', { target_id: targetId });
+    choose('dodobird_choose_accomplice', targetId, '选择这位玩家为假共犯');
   };
 
   const handleNightDone = () => {
@@ -238,7 +234,7 @@ export default function Room({ ws }) {
   };
 
   const handleVote = (targetId) => {
-    send('vote', { target_id: targetId });
+    choose('vote', targetId, '投票给这位玩家');
   };
 
   const handleNewGame = () => {
@@ -282,7 +278,7 @@ export default function Room({ ws }) {
   return (
     <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
       {/* Room Header */}
-      <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
+      {!embedded && <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -327,6 +323,7 @@ export default function Room({ ws }) {
         </div>
       </div>
 
+      }
       {/* Room Settings (creator only, waiting phase) */}
       {phase === 'waiting' && isCreator && !embedded && (
         <div className="glass-card p-4">
@@ -368,13 +365,16 @@ export default function Room({ ws }) {
           <div className="text-3xl mb-2">👀</div>
           <div className="text-lg font-bold text-purple-300">你是观众</div>
           <div className="text-sm text-white/60">
-            {phase === 'waiting' ? '等待下一局开始后你将成为正式玩家' : '你可以看到所有玩家的信息'}
+            {phase === 'waiting' ? '等待下一局开始后你将成为正式玩家' : '身份与秘密行动在揭晓前不会显示'}
           </div>
         </div>
       )}
 
+      <div className="glass-card p-4 space-y-3"><h2 className="font-bold text-lg">{phase === 'night' ? '🌙 完成你的夜晚行动' : phase === 'day' ? '☀️ 现在可以放下手机，面对面讨论' : phase === 'voting' ? '🗳️ 选择你要投票的玩家' : '🏆 本局结果'}</h2>
+        {!isSpectator && ['night','day','voting'].includes(phase) && <button className="btn-secondary" onClick={() => setShowPrivate(!showPrivate)}>{showPrivate ? '隐藏身份与私密信息' : '查看身份与私密信息'}</button>}
+      </div>
       {/* Game Info Banner */}
-      {!isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
+      {showPrivate && !isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
         <div className={`glass-card p-4 ${
           isMeThief ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : 'border-blue-500/30'
         }`}>
@@ -497,10 +497,8 @@ export default function Room({ ws }) {
 
       {/* Action Log */}
       {phase === 'result' && roomState.action_log && (
-        <div
-          className="glass-card p-4"
-        >
-          <div className="text-sm font-bold text-white/70 mb-3">📜 行动过程公示</div>
+        <details className="glass-card p-4">
+          <summary className="text-sm font-bold text-white/70 mb-3">📜 查看身份与行动过程</summary>
           <div className="space-y-3">
             {roomState.action_log.map((entry) => {
               const roleColors = {
@@ -565,7 +563,7 @@ export default function Room({ ws }) {
               );
             })}
           </div>
-        </div>
+        </details>
       )}
 
       {/* Players Grid */}
@@ -586,10 +584,10 @@ export default function Room({ ws }) {
                 isMe={p.id === playerId}
                 isCreator={p.id === creator_id}
                 phase={phase}
-                onPeek={canPeek ? handlePeek : null}
+                onPeek={showPrivate && canPeek ? handlePeek : null}
                 onVote={phase === 'voting' ? handleVote : null}
-                onAccomplice={canAccomplice ? handleAccomplice : null}
-                onDodobirdAccomplice={canDodobirdAccomplice ? handleDodobirdAccomplice : null}
+                onAccomplice={showPrivate && canAccomplice ? handleAccomplice : null}
+                onDodobirdAccomplice={showPrivate && canDodobirdAccomplice ? handleDodobirdAccomplice : null}
                 myVote={me?.voted_for}
                 canAccomplice={canAccomplice}
                 canDodobirdAccomplice={canDodobirdAccomplice}
@@ -604,7 +602,7 @@ export default function Room({ ws }) {
       )}
 
       {/* Accomplice Full-Screen Overlay */}
-      {screenShake && (
+      {showPrivate && screenShake && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
           <div className="text-center p-8">
             <div className="text-8xl mb-4 animate-shake">🤝</div>
@@ -628,8 +626,9 @@ export default function Room({ ws }) {
         </div>
       )}
 
+      {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p>{players[confirmation.target]?.avatar} {players[confirmation.target]?.name}</p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
       {/* Action Buttons */}
-      <div className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
+      <fieldset disabled={!ws.connected || ws.actionPending} className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
         {isSpectator && phase !== 'waiting' && (
           <span className="text-sm text-white/40">👀 观战中，等待本局结束...</span>
         )}
@@ -660,7 +659,7 @@ export default function Room({ ws }) {
           else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
           return (
             <>
-              {hint && <span className="text-sm text-yellow-400">{hint}</span>}
+              {showPrivate && hint && <span className="text-sm text-yellow-400">{hint}</span>}
               <button
                 onClick={handleNightDone}
                 disabled={btnDisabled}
@@ -707,7 +706,7 @@ export default function Room({ ws }) {
         {phase === 'result' && (embedded || !isCreator) && (
           <span className="text-sm text-white/40">{embedded ? '本局结束，请返回公共房间选择下一局。' : '等待房主开启下一局...'}</span>
         )}
-      </div>
+      </fieldset>
     </div>
   );
 }

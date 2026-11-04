@@ -21,6 +21,7 @@ export default function RoomTopBar({
   isPlaying, 
   onLeave 
 }: Props) {
+  if (window.parent !== window) return <div className="flex justify-between px-4 py-2 text-sm text-slate-300 border-b border-slate-800"><span>第 {handNumber} 手</span><span>小盲 {sbAmount} / 大盲 {bbAmount}</span></div>;
   return (
     <div className="flex-none z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-2">
       <div className="flex items-center justify-between">

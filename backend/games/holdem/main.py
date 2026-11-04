@@ -275,6 +275,8 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
     try:
         while True:
             data = await ws.receive_json()
+            if manager.rooms.get(room_id, {}).get(player_id) is not ws:
+                return
             msg_type = data.get("type")
 
             if msg_type == "ping":
@@ -282,6 +284,13 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
                     "type": "pong",
                     "timestamp": data.get("timestamp", 0),
                 })
+                continue
+
+            if msg_type == 'refresh':
+                async with get_room_lock(room_id):
+                    room = await get_room(room_id)
+                    if room:
+                        await manager.send_to_player(room_id, player_id, room_to_broadcast(room))
                 continue
 
             # Acquire per-room lock to prevent concurrent state mutations

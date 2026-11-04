@@ -117,7 +117,7 @@ async def game_socket(ws: WebSocket, room_id: str, player_id: str):
         room = await api.load(room_id)
     except Exception:
         await ws.close(code=4404); return
-    if room_id in api.transitions or room.data['game_id'] != 'bluff' or player_id not in room.data['members']:
+    if room_id in api.transitions or room.data['game_id'] != 'bluff' or (player_id not in room.data['members'] or player_id in room.data['pending_member_ids']):
         await ws.close(code=4403); return
     await ws.accept()
     previous = sockets[room_id].get(player_id)

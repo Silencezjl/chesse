@@ -6,256 +6,277 @@ const playerId = localStorage.getItem('lobby_player_id') || uid();
 localStorage.setItem('lobby_player_id', playerId);
 const avatars = ['🐭','🦊','🐼','🐸','🐱','🐶','🐰','🐻'];
 let name = localStorage.getItem('lobby_name') || '', avatar = localStorage.getItem('lobby_avatar') || '🐭';
-let games = [], room = null, screen = 'home', intent = null, preview = null, error = '', busy = false;
+let games = [], rooms = [], room = null, error = '', listError = '', busy = false, booting = true;
 let socket = null, reconnect = null, connected = false, superseded = false, showGame = true, mountedSession = '';
-let settingsDraft = {}, draftKey = '', invitationOpen = false, fallbackCopy = '', serverOffset = 0;
-let joinCode = new URLSearchParams(location.search).get('room') || '';
-let booting = true, pendingKick = null;
+let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
+let draftName = '', draftAvatar = '', password = '', selectedGame = '', targetRoom = null, gameConnected = false;
+let listing = false, lastFocus = null, restartChoose = false;
 
-async function api(path, data, method = 'POST') {
+async function api(path, data) {
   const response = await fetch(`/lobby${path}`, data === undefined ? {} : {
-    method, headers: {'content-type': 'application/json'}, body: JSON.stringify(data),
+    method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(data),
   });
   let result;
   try { result = await response.json(); } catch { throw Error('服务暂时不可用，请稍后重试'); }
-  if (!response.ok) {
-    const detail = typeof result.detail === 'string' ? result.detail : '提交内容有误，请检查后重试';
-    throw Error(detail);
-  }
+  if (!response.ok) throw Error(typeof result.detail === 'string' ? result.detail : '提交内容有误，请检查后重试');
   return result;
 }
-const profile = () => ({player_id: playerId, name: name.trim(), avatar});
+const profile = () => ({player_id:playerId, name:name.trim(), avatar});
 const info = id => games.find(g => g.id === id);
 const editable = () => room && ['choosing','waiting','countdown'].includes(room.stage);
 const isOwner = () => room?.owner_id === playerId;
-const inviteURL = () => `${location.origin}/?room=${room.id}`;
+const pending = () => room?.pending_member_ids?.includes(playerId);
+const inSession = () => room?.session_members?.includes(playerId);
+const roomTitle = r => `${r?.owner_name || r?.members?.[r.owner_id]?.name || '朋友'}的房间`;
 const stageName = stage => ({choosing:'等待选游戏',waiting:'等待准备',countdown:'即将开局',playing:'游戏进行中',finished:'本局已结束'}[stage] || '等待中');
 function notify(message) {
-  const el = document.querySelector('#toast'); el.textContent = message;
-  clearTimeout(notify.timer); notify.timer = setTimeout(() => { el.textContent = ''; }, 3200);
+  const el=document.querySelector('#toast'); el.textContent=message;
+  clearTimeout(notify.timer); notify.timer=setTimeout(()=>{el.textContent='';},3200);
 }
 async function action(fn) {
-  if (busy) return;
-  busy = true; error = ''; render();
-  try { await fn(); } catch(e) { error = e.message || '操作失败，请重试'; }
-  finally { busy = false; render(); }
+  if(busy)return;
+  busy=true;error='';render();
+  try{await fn();}catch(e){error=e.message || '操作失败，请重试';}
+  finally{busy=false;render();}
 }
 function saveProfile() {
-  name = name.trim();
-  if (!name || name.length > 12) throw Error('请输入 1–12 个字符的昵称');
-  localStorage.setItem('lobby_name', name); localStorage.setItem('lobby_avatar', avatar);
+  name=name.trim();
+  localStorage.setItem('lobby_name',name);localStorage.setItem('lobby_avatar',avatar);
 }
 function closeSocket() {
-  clearTimeout(reconnect); reconnect = null;
-  if (socket) { socket.onclose = null; socket.close(); socket = null; }
-  connected = false;
+  clearTimeout(reconnect);reconnect=null;
+  if(socket){socket.onclose=null;socket.close();socket=null;}
+  connected=false;
 }
 function clearRoom() {
-  closeSocket(); room = null; mountedSession = ''; gameShell.replaceChildren(); gameShell.hidden = true;
-  localStorage.removeItem('lobby_room_id'); screen = 'home';
-  history.replaceState(null, '', '/'); render();
+  closeSocket();sheet=null;pendingKick=null;room=null;mountedSession='';gameConnected=false;gameShell.replaceChildren();gameShell.hidden=true;
+  localStorage.removeItem('lobby_room_id');history.replaceState(null,'','/');render();refreshList();
 }
 function connect() {
-  if (!room || superseded) return;
-  closeSocket(); const rid = room.id;
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/lobby/rooms/${rid}/ws/${playerId}`);
-  socket = ws;
-  ws.onopen = () => { connected = true; render(); };
-  ws.onmessage = event => {
-    if (socket !== ws) return;
-    try { const message = JSON.parse(event.data); if (message.type === 'room_state') updateRoom(message.data); }
-    catch { error = '同步消息异常，正在恢复'; render(); }
+  if(!room || superseded)return;
+  closeSocket();const rid=room.id;
+  const ws=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/lobby/rooms/${rid}/ws/${playerId}`);
+  socket=ws;
+  ws.onopen=()=>{if(socket!==ws)return;connected=false;};
+  ws.onmessage=event=>{
+    if(socket!==ws)return;
+    try{const m=JSON.parse(event.data);if(m.type==='room_state'){connected=true;updateRoom(m.data);}}
+    catch{error='同步消息异常，正在恢复';render();}
   };
-  ws.onclose = event => {
-    if (socket !== ws) return;
-    connected = false;
-    if (event.code === 4001) {
-      superseded = true; error = '此房间已在另一个标签页打开。关闭其他页面后，刷新这里即可接管。'; render(); return;
-    }
-    if ([4003,4403,4404,1008].includes(event.code)) {
-      clearRoom(); error = '你已离开房间或被房主移出。'; render(); return;
-    }
-    render();
-    if (room?.id === rid) reconnect = setTimeout(connect, 1800);
+  ws.onclose=event=>{
+    if(socket!==ws)return;connected=false;
+    if(event.code===4001){superseded=true;conceal();showGame=false;sheet=null;error='此房间已在另一个标签页打开，刷新这里即可接管。';render();return;}
+    if([4003,4403,4404,1008].includes(event.code)){sheet=null;pendingKick=null;clearRoom();error='你已离开房间或被房主移出。';render();return;}
+    render();if(room?.id===rid)reconnect=setTimeout(connect,1800);
   };
-  ws.onerror = () => {};
+  ws.onerror=()=>{};
 }
 function updateRoom(next) {
-  if (!next.members?.[playerId]) { clearRoom(); return; }
-  const previous = room;
-  if (!previous && next.stage === 'finished') showGame = false;
-  room = next;
-  serverOffset = next.server_time * 1000 - Date.now();
-  screen = 'room';
-  localStorage.setItem('lobby_room_id', next.id);
-  if (previous?.session_id !== next.session_id && next.stage === 'playing') showGame = true;
-  const key = `${room.id}:${room.game_id}:${room.revision}`;
-  if (draftKey !== key) { settingsDraft = {...room.options}; draftKey = key; }
+  if(!next.members?.[playerId]){clearRoom();return;}
+  const previous=room;room=next;
+  if(!previous || previous.stage!==next.stage){pendingKick=null;if(next.stage==='playing')sheet=null;}
+  if(!previous && next.stage==='finished')showGame=false;
+  if(previous?.session_id!==next.session_id && next.stage==='playing')showGame=true;
+  if(pending())showGame=false;
+  serverOffset=next.server_time*1000-Date.now();
+  localStorage.setItem('lobby_room_id',next.id);
+  const me=next.members[playerId];name=me.name;avatar=me.avatar;saveProfile();
+  const key=`${room.id}:${room.game_id}:${room.revision}`;
+  if(draftKey!==key){settingsDraft={...room.options};draftKey=key;}
   render();
 }
 async function loadRoom(id) {
   updateRoom(await api(`/rooms/${encodeURIComponent(id)}?player_id=${encodeURIComponent(playerId)}`));
-  connect(); history.replaceState(null, '', `/?room=${id}`);
+  connect();history.replaceState(null,'','/');
 }
-async function refreshRoom() {
-  if (!room || !connected || socket?.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({type:'refresh'}));
+function refreshRoom() {
+  if(room && connected && socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'refresh'}));
 }
-function beginCreate(gameId) { intent = {type:'create', gameId}; screen = 'profile'; error = ''; render(); }
-async function inspectInvite() {
-  joinCode = joinCode.trim();
-  if (!/^\d{6}$/.test(joinCode)) throw Error('请输入六位数字房间号');
-  preview = await api(`/rooms/${joinCode}/preview`);
-  intent = {type:'join', roomId: joinCode}; screen = 'profile';
+async function refreshList() {
+  if(listing || room || document.hidden)return;
+  listing=true;
+  try{rooms=await api('/rooms');listError='';}catch(e){listError=e.message;}
+  finally{listing=false;if(!room)render();}
+}
+function openSheet(type, target=null) {
+  lastFocus=document.activeElement?.id;sheet=type;error='';password='';targetRoom=target;
+  draftName=name;draftAvatar=avatar;render();
+  root.querySelector('[role=dialog] input, [role=dialog] button')?.focus();
+}
+function closeSheet(){sheet=null;pendingKick=null;password='';error='';render();document.getElementById(lastFocus)?.focus();}
+function beginCreate(gameId='') {selectedGame=gameId;openSheet('create');}
+async function beginJoin(id) {
+  targetRoom=await api(`/rooms/${encodeURIComponent(id)}/preview`);
+  if(!targetRoom.joinable)throw Error('房间已满，请选择其他房间');
+  if(!name || targetRoom.has_password){openSheet('join',targetRoom);return;}
+  await api(`/rooms/${id}/join`,profile());await loadRoom(id);
 }
 async function submitProfile() {
-  saveProfile();
-  if (intent.type === 'create') {
-    const created = await api('/rooms', {...profile(), game_id: intent.gameId || null});
-    await loadRoom(created.id);
-  } else {
-    await api(`/rooms/${intent.roomId}/join`, profile()); await loadRoom(intent.roomId);
+  const nextName=draftName.trim();
+  if(!nextName || nextName.length>12)throw Error('请输入 1–12 个字符的昵称');
+  const values={player_id:playerId,name:nextName,avatar:draftAvatar};
+  if(sheet==='profile'){
+    if(room)await roomAction('profile',values);
+  }else if(sheet==='create'){
+    const created=await api('/rooms',{...values,game_id:selectedGame || null,password});await loadRoom(created.id);
+  }else{
+    const id=targetRoom.id;await api(`/rooms/${id}/join`,{...values,password});await loadRoom(id);
   }
+  name=nextName;avatar=draftAvatar;saveProfile();sheet=null;password='';
 }
-async function roomAction(path, body = {}) {
-  if (!connected) throw Error('连接恢复后才能操作');
-  const next = await api(`/rooms/${room.id}/${path}`, {player_id: playerId, ...body});
-  if (next?.id) updateRoom(next);
+async function roomAction(path,body={}) {
+  if(!connected)throw Error('连接恢复后才能操作');
+  const next=await api(`/rooms/${room.id}/${path}`,{player_id:playerId,...body});if(next?.id)updateRoom(next);
 }
 function homeView() {
-  return `<section class="hero"><div><div class="eyebrow">GOOD COMPANY, GREAT GAMES</div><h1 style="margin-top:12px">朋友到齐，<br>就开局。</h1><p class="muted">选个游戏，分享房间。<br>把热闹留给朋友，把流程交给我们。</p></div><div class="hero-art" aria-hidden="true"><span class="die">⚄</span><span class="die second">⚂</span></div></section>
-    <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div>
-    <div class="games">${games.map(g => `<article class="game-card"><div class="game-cover ${g.id}"><span class="tag">${esc(g.tag)}</span><span class="game-symbol">${g.icon}</span></div><div class="game-body"><div class="game-meta"><span>${g.minimum}–${g.maximum} 人</span><span>和朋友一起</span></div><h2>${esc(g.title)}</h2><p>${esc(g.description)}</p><button data-create="${g.id}" ${busy?'disabled':''}>创建房间 <span aria-hidden="true">↗</span></button></div></article>`).join('')}</div>
-    <section class="join-strip"><div><h3>朋友已经开好房间？</h3><p class="muted">输入房间号，加入他们的快乐。</p></div><form id="join-form" class="join-form"><input id="join-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" value="${esc(joinCode)}" placeholder="六位房间号" aria-label="六位房间号" required><button ${busy?'disabled':''}>加入房间</button></form></section>
-    <div class="home-foot"><span>同一个房间，一起玩下一局。</span><button class="link" id="empty-room">还没想好？先建一个空房间</button></div>`;
-}
-function profileView() {
-  const joining = intent?.type === 'join';
-  const g = info(joining ? preview?.game_id : intent?.gameId);
-  const blocked = joining && !preview?.joinable;
-  return `<div class="compact"><button class="link back" id="back-home">← 返回首页</button><section class="card"><div class="eyebrow">${joining?'YOU ARE INVITED':'LET’S GET TOGETHER'}</div><h2>${joining?`加入房间 ${esc(intent.roomId)}`:g?`创建${esc(g.title)}房间`:'先和朋友集合'}</h2><p class="muted">${joining?`${esc(preview.owner_name)} 的房间 · ${g?esc(g.title):'尚未选游戏'} · ${preview.count}/12 人`:'给自己起个名字，让朋友认出你。'}</p>
-    ${joining?`<div class="notice">${preview.stage==='playing'?'本局进行中，请等结束后再加入。':preview.count>=12?'房间已满，请联系房主腾出位置。':'加入后入座并准备，全部准备后自动开局。'}</div>`:''}
-    <form id="profile-form" class="profile-form"><label>你的昵称<input id="name" autocomplete="nickname" maxlength="12" value="${esc(name)}" placeholder="朋友怎么称呼你？" required></label><div><span style="font-size:14px">选个头像</span><div class="avatars" style="margin-top:10px">${avatars.map(a=>`<button type="button" class="avatar-pick ${avatar===a?'active':''}" data-avatar="${a}" aria-label="头像 ${a}" aria-pressed="${avatar===a}">${a}</button>`).join('')}</div></div><button ${busy||blocked?'disabled':''}>${busy?'正在进入…':joining?'加入房间':'创建房间'}</button></form>${blocked?'<button class="link" id="recheck">刷新房间状态</button>':''}</section></div>`;
+  return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room">＋ 创建房间</button></section>
+  <div class="section-head"><h2>朋友的房间 <small>${rooms.length}</small></h2><button class="secondary" id="refresh-list">刷新</button></div>
+  ${listError?`<div class="error" role="alert">${esc(listError)} · 点击刷新重试</div>`:''}
+  <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${esc(r.owner_avatar)}</div><div class="room-summary"><h3>${esc(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<section class="empty-state card"><span>🎲</span><h3>第一桌，等你来开</h3><p class="muted">创建房间，朋友就能在这里找到你。</p></section>`}</div>
+  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}"><span>${g.icon}</span><strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
 }
 function settingsView() {
-  const g = info(room.game_id);
-  if (!g) return '';
-  const owner = isOwner(), canEdit = owner && editable() && connected;
-  return `<details class="card" id="settings-panel"><summary>本局设置${owner?' · 点击调整':' · 房主设置'}</summary><form id="settings-form" class="settings">${g.settings.map(f=>f.type==='boolean'?`<label class="check-label">${esc(f.label)}<input id="setting-${f.key}" data-setting="${f.key}" type="checkbox" ${settingsDraft[f.key]?'checked':''} ${canEdit?'':'disabled'}></label>`:`<label>${esc(f.label)}<input id="setting-${f.key}" data-setting="${f.key}" type="number" min="${f.min}" max="${f.max}" step="1" value="${esc(settingsDraft[f.key])}" ${canEdit?'':'disabled'} required></label>`).join('')}${canEdit?`<button class="secondary" ${busy?'disabled':''}>保存设置 · 所有人重新准备</button>`:''}</form></details>`;
+  const g=info(room.game_id);if(!g)return '';
+  const canEdit=isOwner()&&editable()&&connected;
+  return `<form id="settings-form" class="settings">${g.settings.map(f=>f.type==='boolean'?`<label class="check-label">${esc(f.label)}<input id="setting-${f.key}" data-setting="${f.key}" type="checkbox" ${settingsDraft[f.key]?'checked':''} ${canEdit?'':'disabled'}></label>`:`<label>${esc(f.label)}<input id="setting-${f.key}" data-setting="${f.key}" type="number" min="${f.min}" max="${f.max}" step="1" value="${esc(settingsDraft[f.key])}" ${canEdit?'':'disabled'} required></label>`).join('')}${canEdit?'<button>保存设置 · 全员重新准备</button>':''}</form>`;
 }
-function seatView(pid, index) {
-  if (!pid) return `<div class="seat empty"><span style="font-size:26px">＋</span><small>空位 ${index+1}</small></div>`;
-  const p = room.members[pid];
-  return `<div class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}"><span class="face">${esc(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${esc(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small>${isOwner()&&editable()&&pid!==playerId?`<button class="link" data-seat="${esc(pid)}" data-seated="false" ${!connected||busy?'disabled':''}>移至观战</button>`:''}</div>`;
-}
-function inviteView() {
-  return `<section class="card invite-panel"><div class="eyebrow">SAVE A SEAT FOR FRIENDS</div><p>邀请朋友，一起入座</p><div class="room-code">${room.id}</div><div class="invite-actions"><button class="secondary" id="copy-code">复制房间号</button><button id="copy-link">复制链接</button></div><button class="link" id="toggle-qr">${invitationOpen?'收起二维码':'面对面？扫码加入'}</button>${invitationOpen?'<div class="qr" id="qr-code" aria-label="房间邀请二维码"></div>':''}${fallbackCopy?`<div class="copy-fallback">长按或选中复制：<br>${esc(fallbackCopy)}</div>`:''}</section>`;
+function seatView(pid,index) {
+  if(!pid)return `<div class="seat empty"><span>＋</span><small>等待朋友入座</small></div>`;
+  const p=room.members[pid];
+  return `<button class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}" data-member="${esc(pid)}"><span class="face">${esc(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${esc(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small></button>`;
 }
 function actionView() {
-  const me = room.members[playerId], g = info(room.game_id), seated = room.seats.includes(playerId);
-  const participants = room.seats.map(pid=>room.members[pid]);
-  const unready = room.seats.filter(pid=>!room.members[pid].ready);
-  let title = '', subtitle = '', button = '';
-  if (room.stage==='playing') { title='朋友们正在游戏中'; subtitle='查看房间不会结束本局'; button='<button id="resume">返回游戏 →</button>'; }
-  else if (room.stage==='finished') { title='这一局，玩得怎么样？'; subtitle=isOwner()?'准备下一局，也可以换个游戏':'等待房主开启下一局'; button=isOwner()?`<button id="next-session" ${!connected||busy?'disabled':''}>再来一局 / 换游戏</button>`:room.session_members?.includes(playerId)?'<button data-resume>查看本局结果</button>':'<button disabled>等待下一局</button>'; }
-  else if (!g) { title='先选个游戏吧'; subtitle=isOwner()?'选好游戏后，大家就可以准备了':'等待房主选择游戏'; button='<button disabled>等待选游戏</button>'; }
-  else if (!seated) { title='你正在观战席'; subtitle='入座后就能准备参与本局'; button=`<button data-seat="${playerId}" data-seated="true" ${!connected||busy||room.seats.length>=g.maximum?'disabled':''}>${room.seats.length>=g.maximum?'座位已满':'我要参与'}</button>`; }
-  else { title = room.stage==='countdown'?'全部准备，马上开局！':participants.length<g.minimum?`还差 ${g.minimum-participants.length} 位玩家`:`${participants.filter(p=>p.ready).length}/${participants.length} 位玩家已准备`;
-    subtitle=room.stage==='countdown'?'取消准备可以暂停开局':unready.length?`等待 ${unready.map(pid=>room.members[pid].name).join('、')}`:'等待连接恢复';
-    button=`${room.stage==='countdown'?'<span class="countdown-number" id="countdown-number"></span>':''}<button id="ready" class="${me.ready?'secondary':''}" ${!connected||busy?'disabled':''}>${me.ready?'取消准备':'准备好了'}</button>`;
+  const me=room.members[playerId],g=info(room.game_id),seated=room.seats.includes(playerId);
+  const participants=room.seats.map(pid=>room.members[pid]);
+  const unready=room.seats.filter(pid=>!room.members[pid].ready);
+  let title='',subtitle='',button='';
+  if(room.stage==='playing'){
+    title=pending()?'已为你留好下一局':'朋友们正在游戏中';subtitle=pending()?'本局结束后，回到等待室入座':'查看房间不会结束本局';
+    button=inSession()?'<button id="resume">返回游戏</button>':'<button disabled>等待下一局</button>';
+  }else if(room.stage==='finished'){
+    title='这一局，玩得怎么样？';subtitle=isOwner()?'回到等待室，大家重新准备':'等待房主开启下一局';
+    button=isOwner()?'<button id="next-session">再来一局</button><button class="secondary" id="switch-session">换游戏</button>':inSession()?'<button data-resume>查看结果</button>':'<button disabled>等待下一局</button>';
+  }else if(!g){title='先选个游戏吧';subtitle=isOwner()?'选好游戏，大家就可以准备了':'等待房主选择游戏';button='<button disabled>等待选游戏</button>';}
+  else if(!seated){title='这局先旁观';subtitle='入座后就能准备参与本局';button=`<button data-seat="${playerId}" data-seated="true" ${room.seats.length>=g.maximum?'disabled':''}>${room.seats.length>=g.maximum?'座位已满':'我要参与'}</button>`;}
+  else{
+    title=room.stage==='countdown'?'全部准备，马上开局！':participants.length<g.minimum?`还差 ${g.minimum-participants.length} 位玩家`:`${participants.filter(p=>p.ready).length}/${participants.length} 位玩家已准备`;
+    subtitle=room.stage==='countdown'?'取消准备可以暂停开局':participants.some(p=>!p.connected)?'等待玩家连接恢复':unready.length?`等待 ${unready.slice(0,2).map(pid=>room.members[pid].name).join('、')}${unready.length>2?` 等 ${unready.length} 人`:''}`:'马上开局';
+    button=`${room.stage==='countdown'?'<span class="countdown-number" id="countdown-number"></span>':''}<button id="ready" class="${me.ready?'secondary':''}">${me.ready?'取消准备':'准备好了'}</button>`;
   }
-  return `<div class="action-bar"><div class="action-inner"><div><p>${title}</p><small>${esc(subtitle)}</small></div><div class="row">${button}</div></div></div>`;
+  return `<div class="action-bar"><div class="action-inner"><div><p>${esc(title)}</p><small>${esc(subtitle)}</small></div><div class="row">${button}</div></div></div>`;
 }
 function roomView() {
-  const g=info(room.game_id), seated=room.seats.includes(playerId), canEdit=editable();
-  const count=g?Math.max(g.minimum,room.seats.length):room.seats.length;
-  const observers=Object.keys(room.members).filter(p=>!room.seats.includes(p));
-  return `<div class="room-head"><div><div class="eyebrow">YOUR TABLE, YOUR FRIENDS</div><h1>房间 <span class="room-code">${room.id}</span></h1><div class="status" style="margin-top:10px"><span class="dot ${connected?'':'off'}"></span>${connected?'实时同步中':superseded?'当前标签页已暂停':'连接恢复中…'} · ${stageName(room.stage)}</div></div><button class="danger" id="leave" ${room.stage==='playing'||!connected||busy?'disabled':''}>离开房间</button></div>
-    ${room.start_error?`<div class="error">${esc(room.start_error)}</div>`:''}${room.stage==='finished'&&room.session_members?.includes(playerId)?'<button class="link back" id="resume">查看上局结果 →</button>':''}
-    <div class="room-layout"><div class="stack"><section class="card"><div class="row"><div class="game-heading"><span class="mini-symbol">${g?.icon||'🎲'}</span><div><h2>${g?esc(g.title):'今晚玩什么？'}</h2><p class="muted" style="font-size:12px;margin-top:4px">${g?`${g.minimum}–${g.maximum} 人参与 · 其余成员观战`:'先集合，再决定也没关系'}</p></div></div><span class="badge">${stageName(room.stage)}</span></div>
-    ${isOwner()&&canEdit?`<details id="game-picker" style="margin-top:18px" ${g?'':'open'}><summary>${g?'换个游戏':'选择游戏'}</summary><div class="room-list-games" style="margin-top:12px">${games.map(game=>`<button data-game="${game.id}" class="${game.id===room.game_id?'selected':''}" ${!connected||busy?'disabled':''}>${game.icon} ${esc(game.title)}</button>`).join('')}</div></details>`:!g?'<p class="muted" style="margin-top:16px">等待房主选游戏。</p>':''}
-    <div class="section-head" style="margin-bottom:0"><h3>参与玩家 <span class="muted">${room.seats.length}${g?` / ${g.maximum}`:''}</span></h3>${seated&&canEdit?`<button class="link" data-seat="${playerId}" data-seated="false" ${!connected||busy?'disabled':''}>这局先观战</button>`:''}</div><div class="seats">${Array.from({length:count},(_,i)=>seatView(room.seats[i],i)).join('')}</div>
-    ${observers.length?`<div style="margin-top:22px"><h3>观战席 <span class="muted">${observers.length} 人</span></h3><div class="spectators">${observers.map(pid=>`<span class="spectator">${esc(room.members[pid].avatar)} ${esc(room.members[pid].name)}${pid===playerId?' · 我':''}${isOwner()&&canEdit?`<button class="link" data-seat="${esc(pid)}" data-seated="true" ${!connected||busy?'disabled':''}>入座</button>`:''}</span>`).join('')}</div></div>`:''}
-    ${g?`<div class="notice" style="margin-top:20px">${g.minimum} 人起玩，所有参与玩家准备后 3 秒自动开局。观众无需准备。</div>`:''}</section>
-    ${settingsView()}<details class="card"><summary>第一次玩？看看流程</summary><ol class="rules-list"><li>把房间号或邀请链接发给朋友。</li><li>选择游戏，玩家入座，房主可调整参与名单。</li><li>大家点击准备，3 秒后自动进入游戏。</li><li>结束后返回这里，同房再来或换游戏。</li></ol></details></div>
-    <aside class="room-aside stack">${inviteView()}<section class="card"><h3>${isOwner()?'房主管理':'房间成员'} <small>${Object.keys(room.members).length}/12</small></h3><p class="muted" style="font-size:12px;margin-top:8px">${room.members[room.owner_id].connected?`房主：${esc(room.members[room.owner_id].name)}`:'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><div class="members-manage">${Object.entries(room.members).map(([pid,p])=>`<div class="member-manage"><span>${esc(p.avatar)} ${esc(p.name)}${pid===room.owner_id?' ♛':''}</span>${isOwner()&&pid!==playerId&&room.stage!=='playing'?`<div><button class="link" data-transfer="${esc(pid)}" ${!connected||!p.connected||busy?'disabled':''}>转交</button>${canEdit?`<button class="link" data-kick="${esc(pid)}" ${!connected||busy?'disabled':''}>移出</button>`:''}</div>`:`<small>${p.connected?'在线':'离线'}</small>`}</div>`).join('')}</div></section></aside></div>${actionView()}`;
+  const g=info(room.game_id),observers=Object.keys(room.members).filter(p=>!room.seats.includes(p));
+  return `<div class="room-head"><div><h1>${esc(roomTitle(room))}</h1><div class="status"><span class="dot ${connected?'':'off'}"></span>${connected?stageName(room.stage):superseded?'当前标签页已暂停':'连接恢复中…'} · ${Object.keys(room.members).length}/12 人 ${room.has_password?'· 🔒':''}</div></div><button class="secondary" id="room-menu">更多</button></div>
+  ${room.start_error?`<div class="error">${esc(room.start_error)}</div>`:''}
+  ${pending()?'<div class="notice">你已加入候场。本局信息暂不开放，结束后可以入座。</div>':''}
+  <section class="card table-card"><div class="row"><div class="game-heading"><span class="mini-symbol">${g?.icon || '🎲'}</span><div><h2>${esc(g?.title || '今晚玩什么？')}</h2><p class="muted">${g?`${g.minimum}–${g.maximum} 人参与`:'先集合，再决定也没关系'}</p></div></div>${isOwner()&&editable()?'<button class="link" id="game-picker">选游戏</button>':''}</div>
+  <div class="section-head"><h3>参与玩家 <small>${room.seats.length}</small></h3>${room.seats.includes(playerId)&&editable()?`<button class="link" data-seat="${playerId}" data-seated="false">这局先旁观</button>`:''}</div>
+  <div class="seats">${Array.from({length:Math.max(room.seats.length,g?.minimum || 1)},(_,i)=>seatView(room.seats[i],i)).join('')}</div>
+  ${observers.length?`<div class="section-head"><h3>旁观与候场 <small>${observers.length}</small></h3></div><div class="spectators">${observers.map(pid=>`<button class="spectator secondary" data-member="${esc(pid)}">${esc(room.members[pid].avatar)} ${esc(room.members[pid].name)}${room.pending_member_ids?.includes(pid)?' · 候场':''}</button>`).join('')}</div>`:''}
+  </section><div class="room-tools"><button class="secondary" id="open-settings" ${!g?'disabled':''}>本局设置</button><button class="secondary" id="open-rules">玩法说明</button></div>
+  <p class="room-hint muted">朋友打开大厅，找到“${esc(roomTitle(room))}”就能加入。</p>${actionView()}`;
+}
+function sheetView() {
+  if(!sheet && !pendingKick)return '';
+  let title='',content='';
+  if(pendingKick){title=`移出${room?.members[pendingKick]?.name || '该成员'}？`;content='<p>移出后，该设备无法再次加入本房间。</p><button class="danger" id="confirm-kick">确认移出</button><button class="secondary" id="cancel-kick">先不移出</button>';}
+  else if(['create','join','profile'].includes(sheet)){
+    title=sheet==='create'?'开一桌，等朋友':sheet==='join'?`加入${roomTitle(targetRoom)}`:'我的资料';
+    content=`<form id="profile-form" class="profile-form">${sheet==='join'&&targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}
+    <label>你的昵称<input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></label><div class="avatars">${avatars.map(a=>`<button type="button" class="avatar-pick ${draftAvatar===a?'active':''}" data-avatar="${a}" aria-label="头像 ${a}" aria-pressed="${draftAvatar===a}">${a}</button>`).join('')}</div>
+    ${sheet==='create'?`<label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label>`:''}
+    ${sheet==='create'||sheet==='join'&&targetRoom.has_password?`<label>${sheet==='create'?'房间密码（选填）':'房间密码'}<input id="password" type="password" autocomplete="${sheet==='create'?'new-password':'off'}" maxlength="20" value="${esc(password)}" placeholder="${sheet==='create'?'留空，朋友可直接加入':'请输入房主设置的密码'}" ${sheet==='join'?'required':''}></label>`:''}
+    <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button>${busy?'正在保存…':sheet==='create'?'创建房间':sheet==='join'?'加入房间':'保存资料'}</button></form>`;
+  }else if(sheet==='settings'){title='本局设置';content=settingsView();}
+  else if(sheet==='games'){title='今晚玩什么？';content=`<div class="stack">${games.map(g=>`<button class="secondary" data-game="${g.id}">${g.icon} ${esc(g.title)} · ${g.minimum}–${g.maximum} 人</button>`).join('')}</div>`;}
+  else if(sheet==='password'){title='房间密码';content=`<form id="password-form" class="stack"><p class="muted">${room.has_password?'已设置密码。留空保存可移除密码。':'当前无需密码即可加入。'}已有成员重连不受影响。</p><label>新密码<input type="password" id="password" autocomplete="new-password" maxlength="20" value="${esc(password)}" placeholder="留空则无需密码"></label><button>保存密码</button></form>`;}
+  else if(sheet==='rules'){title='第一次玩？';content=`<ol class="rules-list"><li>朋友打开大厅，找到房主的名字加入。</li><li>入座并准备，全员准备后 3 秒开局。</li><li>按屏幕提示操作，讨论时可以放下手机。</li><li>结束后留在同一房间再来一局。</li></ol><p>${esc(info(room.game_id)?.description || '')}</p><p class="muted">${room.game_id==='holdem'?'这是线下筹码管理，实体牌由大家在线下发放；下一手与重开整场筹码局不同。':room.game_id==='bluff'?'想想选题，大家确认后老实人限时看答案；线下讨论后，想想先质疑，再指认。':'夜晚查看身份并完成行动，白天线下讨论，发起投票后选择目标。'}</p>`;}
+  else if(sheet==='member'){
+    const p=room.members[targetRoom];if(!p)return '';
+    title=`${p.avatar} ${p.name}`;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
+    if(isOwner()&&editable()&&targetRoom!==playerId)content+=`<button class="secondary" data-seat="${esc(targetRoom)}" data-seated="${!room.seats.includes(targetRoom)}">${room.seats.includes(targetRoom)?'移至旁观':'安排入座'}</button><button class="secondary" data-transfer="${esc(targetRoom)}" ${!p.connected?'disabled':''}>转交房主</button><button class="danger" data-kick="${esc(targetRoom)}">移出房间</button>`;
+  }else{title='房间';content=`<p class="muted">${room.members[room.owner_id].connected?'房主：'+esc(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
+  return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${esc(title)}</h2><button class="secondary" id="close-sheet" aria-label="关闭">✕</button></div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
 }
 function mountGame() {
-  const active = room && room.session_id && room.session_members?.includes(playerId) && ['playing','finished'].includes(room.stage);
-  if (!active) { gameShell.replaceChildren(); mountedSession=''; gameShell.hidden=true; return; }
-  if (mountedSession !== room.session_id) {
-    localStorage.setItem('cheese_player_id',playerId); localStorage.setItem('cheese_room_id',room.id);
-    localStorage.setItem('holdem_device_id',playerId); localStorage.setItem('holdem_player_name',name); localStorage.setItem('holdem_player_emoji',avatar); localStorage.setItem('holdem_room_id',room.id);
-    const entry = info(room.game_id)?.entry;
-    const src = room.game_id==='holdem'?`${entry}room/${room.id}`:room.game_id==='bluff'?`${entry}?room=${room.id}`:entry;
-    if (!src) return;
-    const iframe=document.createElement('iframe');iframe.title=info(room.game_id).title;iframe.className='game-frame';iframe.src=src;
-    gameShell.replaceChildren(iframe); mountedSession=room.session_id;
+  const active=room&&room.session_id&&inSession()&&['playing','finished'].includes(room.stage);
+  if(!active){gameShell.replaceChildren();mountedSession='';gameShell.hidden=true;return;}
+  if(mountedSession!==room.session_id){
+    localStorage.setItem('cheese_player_id',playerId);localStorage.setItem('cheese_room_id',room.id);
+    localStorage.setItem('holdem_device_id',playerId);localStorage.setItem('holdem_player_name',name);localStorage.setItem('holdem_player_emoji',avatar);localStorage.setItem('holdem_room_id',room.id);
+    const entry=info(room.game_id)?.entry;
+    const src=room.game_id==='holdem'?`${entry}room/${room.id}`:room.game_id==='bluff'?`${entry}?room=${room.id}`:entry;if(!src)return;
+    const frame=document.createElement('iframe');frame.title=info(room.game_id).title;frame.className='game-frame';frame.src=src;
+    gameConnected=false;gameShell.replaceChildren(frame);mountedSession=room.session_id;
   }
   gameShell.hidden=!showGame;
+  gameShell.inert=Boolean(sheet||pendingKick||!showGame);
 }
+function conceal(){gameShell.querySelector('iframe')?.contentWindow?.postMessage({type:'conceal_private',session_id:mountedSession},location.origin);}
 function render() {
-  const focus=document.activeElement;
-  const saved=focus?.id?{id:focus.id,start:focus.selectionStart,end:focus.selectionEnd}:null;
-  const openDetails=[...root.querySelectorAll('details[id][open]')].map(d=>d.id);
-  const inGame=room&&showGame&&room.session_id&&['playing','finished'].includes(room.stage);
+  const focus=document.activeElement,saved=focus?.id?{id:focus.id,start:focus.selectionStart,end:focus.selectionEnd}:null;
+  const dialog=root.querySelector('[role=dialog]'),scroll=dialog?.scrollTop || 0;
+  const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${pendingKick?'inert':''}><header class="top"><a href="/" class="brand" id="brand"><span class="brand-mark">⚄</span>一起玩<span class="muted" style="font-size:12px;font-weight:450">/ 游戏小聚</span></a><span class="profile-chip">${esc(avatar)} ${esc(name||'留个座，一起玩')}</span></header>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div><strong>${info(room.game_id)?.icon} ${esc(info(room.game_id)?.title)} · ${room.id}</strong><small>${connected?stageName(room.stage):'房间连接恢复中…'}</small></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:screen==='room'&&room?roomView():screen==='profile'?profileView():homeView()}</div>${pendingKick?`<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="kick-title"><h2 id="kick-title">移出${esc(room?.members[pendingKick]?.name||'该成员')}？</h2><p class="muted">移出后，该设备将无法再次加入这个房间。</p><div class="row"><button class="secondary" id="cancel-kick">先不移出</button><button class="danger" id="confirm-kick" ${busy?'disabled':''}>确认移出</button></div></section></div>`:''}`;
-  openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});
-  bindEvents(); mountGame();
-  if (invitationOpen&&document.querySelector('#qr-code')&&globalThis.qrcode) {
-    const code=globalThis.qrcode(0,'M');code.addData(inviteURL());code.make();document.querySelector('#qr-code').innerHTML=code.createSvgTag({cellSize:4,margin:0,scalable:true});
-  }
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand"><span class="brand-mark">⚄</span>一起玩</button><button class="profile-chip secondary" id="my-profile">${esc(avatar)} ${esc(name || '设置我的资料')}</button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  bindEvents();mountGame();
+  if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
+  if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
+  const nextDialog=root.querySelector('[role=dialog]');if(nextDialog)nextDialog.scrollTop=scroll;
   if(saved){const el=document.getElementById(saved.id);if(el){el.focus({preventScroll:true});if(el.setSelectionRange&&saved.start!==null&&el.type!=='number')el.setSelectionRange(saved.start,saved.end);}}
   updateCountdown();
 }
-async function copy(value) {
-  try { await navigator.clipboard.writeText(value); notify('已复制，发给朋友吧'); }
-  catch { fallbackCopy=value; render(); notify('请长按或选中文本复制'); }
-}
 function bindEvents() {
-  const bind=(id,event,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(event,fn);};
-  bind('brand','click',e=>{if(room){e.preventDefault();showGame=false;render();}});
+  const bind=(id,event,fn)=>document.getElementById(id)?.addEventListener(event,fn);
+  bind('brand','click',()=>{if(room){conceal();showGame=false;render();}});
+  bind('my-profile','click',()=>{if(room?.stage==='playing'){notify('本局结束后可以修改资料');return;}openSheet('profile');});
+  bind('create-room','click',()=>beginCreate());bind('refresh-list','click',refreshList);
   root.querySelectorAll('[data-create]').forEach(b=>b.onclick=()=>beginCreate(b.dataset.create));
-  bind('empty-room','click',()=>beginCreate(null));
-  bind('join-code','input',e=>{joinCode=e.target.value.replace(/\D/g,'');e.target.value=joinCode;});
-  bind('join-form','submit',e=>{e.preventDefault();action(inspectInvite);});
-  bind('back-home','click',()=>{screen='home';error='';history.replaceState(null,'','/');render();});
-  bind('name','input',e=>{name=e.target.value;});
-  root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{avatar=b.dataset.avatar;render();});
+  root.querySelectorAll('[data-join]').forEach(b=>b.onclick=()=>action(()=>beginJoin(b.dataset.join)));
+  bind('close-sheet','click',closeSheet);bind('cancel-kick','click',closeSheet);
+  bind('name','input',e=>draftName=e.target.value);bind('password','input',e=>password=e.target.value);
+  bind('create-game','change',e=>selectedGame=e.target.value);
+  root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{draftAvatar=b.dataset.avatar;render();});
   bind('profile-form','submit',e=>{e.preventDefault();action(submitProfile);});
-  bind('recheck','click',()=>action(inspectInvite));
-  bind('leave','click',()=>action(async()=>{await roomAction('leave');clearRoom();}));
-  root.querySelectorAll('[data-resume]').forEach(b=>b.onclick=()=>{showGame=true;render();});
-  bind('show-room','click',()=>{showGame=false;render();});bind('resume','click',()=>{showGame=true;render();});
+  bind('room-menu','click',()=>openSheet('menu'));bind('open-settings','click',()=>openSheet('settings'));bind('open-rules','click',()=>openSheet('rules'));bind('game-picker','click',()=>openSheet('games'));
+  bind('edit-profile','click',()=>openSheet('profile'));bind('edit-password','click',()=>openSheet('password'));
+  root.querySelectorAll('[data-member]').forEach(b=>b.onclick=()=>openSheet('member',b.dataset.member));
+  bind('leave','click',()=>action(async()=>{await roomAction('leave');sheet=null;clearRoom();}));
+  const resume=()=>{sheet=null;showGame=true;render();};
+  root.querySelectorAll('[data-resume]').forEach(b=>b.onclick=resume);bind('resume','click',resume);
+  bind('show-room','click',()=>{conceal();showGame=false;render();});
   bind('ready','click',()=>action(()=>roomAction('ready',{ready:!room.members[playerId].ready,revision:room.revision})));
-  bind('next-session','click',()=>action(async()=>{await roomAction('return');showGame=false;}));
-  root.querySelectorAll('[data-seat]').forEach(b=>b.onclick=()=>action(()=>roomAction('seat',{target_id:b.dataset.seat,seated:b.dataset.seated==='true'})));
-  root.querySelectorAll('[data-game]').forEach(b=>b.onclick=()=>action(()=>roomAction('game',{game_id:b.dataset.game,options:{}})));
-  root.querySelectorAll('[data-setting]').forEach(input=>input.oninput=()=>{settingsDraft[input.dataset.setting]=input.type==='checkbox'?input.checked:Number(input.value);});
-  bind('settings-form','submit',e=>{e.preventDefault();action(()=>roomAction('game',{game_id:room.game_id,options:settingsDraft}));});
-  bind('copy-code','click',()=>copy(room.id));bind('copy-link','click',()=>copy(inviteURL()));
-  bind('toggle-qr','click',()=>{invitationOpen=!invitationOpen;render();});
-  root.querySelectorAll('[data-transfer]').forEach(b=>b.onclick=()=>action(()=>roomAction('manage?action=transfer',{target_id:b.dataset.transfer})));
+  const nextSession=choose=>action(async()=>{if(room.game_id==='holdem'&&!sheet){restartChoose=choose;openSheet('restart');return;}await roomAction('return');showGame=false;if(choose)openSheet('games');else sheet=null;});
+  bind('confirm-restart','click',()=>nextSession(restartChoose));
+  bind('next-session','click',()=>nextSession(false));bind('switch-session','click',()=>nextSession(true));
+  root.querySelectorAll('[data-seat]').forEach(b=>b.onclick=()=>action(async()=>{await roomAction('seat',{target_id:b.dataset.seat,seated:b.dataset.seated==='true'});sheet=null;}));
+  root.querySelectorAll('[data-game]').forEach(b=>b.onclick=()=>action(async()=>{await roomAction('game',{game_id:b.dataset.game,options:{}});sheet=null;}));
+  root.querySelectorAll('[data-setting]').forEach(input=>input.oninput=()=>settingsDraft[input.dataset.setting]=input.type==='checkbox'?input.checked:Number(input.value));
+  bind('settings-form','submit',e=>{e.preventDefault();action(async()=>{await roomAction('game',{game_id:room.game_id,options:settingsDraft});sheet=null;});});
+  bind('password-form','submit',e=>{e.preventDefault();action(async()=>{await roomAction('password',{password});sheet=null;password='';notify('房间密码已更新');});});
+  root.querySelectorAll('[data-transfer]').forEach(b=>b.onclick=()=>action(async()=>{await roomAction('manage?action=transfer',{target_id:b.dataset.transfer});sheet=null;}));
   root.querySelectorAll('[data-kick]').forEach(b=>b.onclick=()=>{pendingKick=b.dataset.kick;render();document.getElementById('cancel-kick')?.focus();});
-  bind('cancel-kick','click',()=>{pendingKick=null;render();});
-  bind('confirm-kick','click',()=>{const target=pendingKick;action(async()=>{await roomAction('manage?action=kick',{target_id:target});pendingKick=null;});});
+  bind('confirm-kick','click',()=>{const target=pendingKick;action(async()=>{await roomAction('manage?action=kick',{target_id:target});pendingKick=null;sheet=null;});});
 }
 function updateCountdown(){const el=document.getElementById('countdown-number');if(el&&room?.countdown)el.textContent=Math.max(0,Math.ceil((room.countdown.deadline*1000-Date.now()-serverOffset)/1000));}
 setInterval(updateCountdown,100);
 setInterval(()=>{if(connected&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'ping'}));},15000);
-setInterval(refreshRoom,5000);
-window.addEventListener('online',()=>{if(room&&!connected&&!superseded)connect();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&room&&!superseded){if(!connected)connect();else refreshRoom();}});
-window.addEventListener('message',e=>{if(e.origin===location.origin&&e.source===gameShell.querySelector('iframe')?.contentWindow&&e.data?.type==='return_to_lobby'){showGame=false;render();refreshRoom();}});
+setInterval(()=>{if(!document.hidden){if(room)refreshRoom();else refreshList();}},5000);
+window.addEventListener('online',()=>{if(room&&!connected&&!superseded)connect();else if(!room)refreshList();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)conceal();else if(room&&!superseded){if(!connected)connect();else refreshRoom();}else if(!room)refreshList();});
+window.addEventListener('message',e=>{
+  if(e.origin!==location.origin||e.source!==gameShell.querySelector('iframe')?.contentWindow)return;
+  if(e.data?.type==='return_to_lobby'){conceal();showGame=false;render();refreshRoom();}
+  if(e.data?.type==='game_connection'){gameConnected=Boolean(e.data.connected);render();}
+});
 (async()=>{
-  try {
-    games=await api('/games');
-    const saved=(await api(`/players/${playerId}/room`)).room_id;
-    if(saved){await loadRoom(saved);if(joinCode&&joinCode!==saved)notify('你还在另一房间，已为你恢复。');}
-    else if(joinCode){await inspectInvite();}
-  }catch(e){error=e.message;}
+  try{games=await api('/games');const saved=(await api(`/players/${playerId}/room`)).room_id;if(saved)await loadRoom(saved);else await refreshList();}
+  catch(e){error=e.message;}
   finally{booting=false;render();}
 })();
-
-document.addEventListener('keydown',e=>{if(!pendingKick)return;if(e.key==='Escape'){pendingKick=null;render();}else if(e.key==='Tab'){const buttons=[...root.querySelectorAll('[role=dialog] button:not(:disabled)')];if(buttons.length){e.preventDefault();const i=buttons.indexOf(document.activeElement);buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();}}});
+document.addEventListener('keydown',e=>{
+  if(!sheet&&!pendingKick)return;
+  if(e.key==='Escape'&&!busy)closeSheet();
+  else if(e.key==='Tab'){const items=[...root.querySelectorAll('[role=dialog] button:not(:disabled),[role=dialog] input:not(:disabled),[role=dialog] select:not(:disabled)')];if(items.length){e.preventDefault();const i=items.indexOf(document.activeElement);items[(i+(e.shiftKey?-1:1)+items.length)%items.length].focus();}}
+});

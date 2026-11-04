@@ -61,9 +61,9 @@ async def main():
         assert all(not p['ready'] for p in r['members'].values())
         print('PASS: cancel, settings invalidation, duplicate tab, restart cancels countdown',flush=True)
         await configure_and_ready(req,rid,ids[0],'holdem',ids)
-        try:await req(f'/lobby/rooms/{rid}/join',{'player_id':'late_'+uuid.uuid4().hex[:8],'name':'迟到玩家','avatar':'🐸'})
-        except AssertionError as exc:assert '409' in str(exc)
-        else:raise AssertionError('Midgame join accepted')
+        late='late_'+uuid.uuid4().hex[:8]
+        joined=await req(f'/lobby/rooms/{rid}/join',{'player_id':late,'name':'迟到玩家','avatar':'🐸'})
+        assert late in joined['pending_member_ids'] and late not in joined['seats'] and late not in joined['session_members']
         for pid in ids:
             c=Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{rid}/{pid}'));games.append(c)
         snapshot=(await games[0].wait('room_state'))['room']
@@ -73,6 +73,7 @@ async def main():
         for pid in ids:
             c=Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{rid}/{pid}'));games.append(c)
         after=(await games[0].wait('room_state'))['room']
+        recovered=await state();assert late in recovered['pending_member_ids'] and late not in recovered['session_members']
         assert after['hand']==snapshot['hand'] and after['hand_number']==snapshot['hand_number']==1
         assert {p:v['chips'] for p,v in after['players'].items()}=={p:v['chips'] for p,v in snapshot['players'].items()}
         actor=ids.index(after['hand']['current_player_id'])
@@ -81,14 +82,14 @@ async def main():
         await games[0].ws.send(json.dumps({'type':'end_game'}))
         await games[0].wait('room_state',lambda m:m['room']['status']=='finished')
         await req(f'/lobby/rooms/{rid}/return',{'player_id':ids[0]})
-        print('PASS: midgame join denied, Holdem restart retains chips/hand, return keeps seats',flush=True)
+        print('PASS: candidate persists without game access, Holdem restart retains chips/hand, return keeps seats',flush=True)
         await clients[0].close()
         print('Waiting for real 60-second host failover…',flush=True)
         await asyncio.sleep(61)
         r=await req(f'/lobby/rooms/{rid}?player_id={ids[1]}')
         assert r['owner_id']==ids[1]
         print('PASS: owner disconnect automatically transfers after 60 seconds',flush=True)
-        for pid in ids:await req(f'/lobby/rooms/{rid}/leave',{'player_id':pid})
+        for pid in [late]+ids:await req(f'/lobby/rooms/{rid}/leave',{'player_id':pid})
     finally:
         for c in clients+games:await c.close()
 

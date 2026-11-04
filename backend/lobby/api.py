@@ -35,6 +35,12 @@ class Profile(BaseModel):
     name: str = Field(min_length=1, max_length=12)
     avatar: str = Field(min_length=1, max_length=16)
     game_id: str | None = None
+    password: str = Field(default="", max_length=20)
+
+
+class PasswordRequest(BaseModel):
+    player_id: str
+    password: str = Field(default='', max_length=20)
 
 
 class SelectGame(BaseModel):
@@ -113,10 +119,12 @@ async def sync(room):
 
 async def public(room):
     await sync(room)
-    data = room.snapshot()
-    state = await current_state(data)
-    for key in ('game_state', 'banned'):
-        data.pop(key, None)
+    saved = room.snapshot()
+    state = await current_state(saved)
+    fields = ('id', 'owner_id', 'members', 'game_id', 'stage', 'seats', 'options', 'revision',
+              'countdown', 'session_id', 'owner_offline_since', 'start_error', 'created_at', 'pending_member_ids')
+    data = {key: saved[key] for key in fields if key in saved}
+    data['has_password'] = bool(saved.get('password_hash'))
     data['game_phase'] = (state.get('phase') or state.get('status')) if state else None
     data['session_members'] = list(dict.fromkeys(list(state.get('players', {})) + list(state.get('spectators', {})))) if state else []
     if state and data['game_id'] == 'bluff':
@@ -294,8 +302,29 @@ async def games():
 
 @router.get('/rooms')
 async def list_rooms():
-    # Invitations replace public enumeration of friends' room codes and identities.
-    return []
+    result = []
+    for rid in await db().smembers(ROOMS_KEY):
+        async with locks[rid]:
+            try:
+                room = await load(rid)
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
+            await sync(room)
+            if room.data['members']:
+                result.append(summary(room))
+    return sorted(result, key=lambda r: (2 if not r['joinable'] else 1 if r['stage'] == 'playing' else 0,
+                                         -r['created_at'], r['id']))
+
+
+def summary(room):
+    d = room.data
+    owner = d['members'][d['owner_id']]
+    return dict(id=d['id'], game_id=d['game_id'], stage=d['stage'], count=len(d['members']),
+                capacity=12, owner_name=owner['name'], owner_avatar=owner['avatar'],
+                created_at=d['created_at'], has_password=bool(d['password_hash']),
+                joinable=len(d['members']) < 12)
 
 
 @router.get('/rooms/{room_id}/preview')
@@ -303,10 +332,7 @@ async def preview(room_id: str):
     async with locks[room_id]:
         room = await load(room_id)
         await sync(room)
-        d = room.data
-        return dict(id=d['id'], game_id=d['game_id'], stage=d['stage'], count=len(d['members']),
-                    owner_name=d['members'][d['owner_id']]['name'],
-                    joinable=d['stage'] != 'playing' and len(d['members']) < 12)
+        return summary(room)
 
 
 @router.post('/rooms')
@@ -322,6 +348,7 @@ async def create_room(profile: Profile):
         else:
             raise HTTPException(503, '无法分配房间号')
         room = rule(LobbyRoom, rid, profile.player_id, profile.name, profile.avatar)
+        await asyncio.to_thread(rule, room.set_password, profile.password)
         if profile.game_id:
             rule(room.configure_game, profile.player_id, profile.game_id, {})
         room.data['members'][profile.player_id]['connected'] = False
@@ -356,6 +383,8 @@ async def join_room(room_id: str, profile: Profile):
                 raise HTTPException(409, f'请先离开房间 {existing}')
             room = await load(room_id)
             await sync(room)
+            if profile.player_id not in room.data['members'] and not await asyncio.to_thread(room.check_password, profile.password):
+                raise HTTPException(403, '密码不正确，请重试')
             rule(room.join, profile.player_id, profile.name, profile.avatar)
             room.data['members'][profile.player_id]['connected'] = bool(connections.get(room_id, {}).get(profile.player_id))
             await save(room, add_player=profile.player_id)
@@ -411,6 +440,35 @@ async def select_game(room_id: str, request: SelectGame):
         return await public(room)
 
 
+@router.post('/rooms/{room_id}/password')
+async def change_password(room_id: str, request: PasswordRequest):
+    async with locks[room_id]:
+        room = await load(room_id)
+        member(room, request.player_id)
+        if request.player_id != room.data['owner_id']:
+            raise HTTPException(403, '只有房主可以修改密码')
+        rule(room.editable)
+        await asyncio.to_thread(rule, room.set_password, request.password)
+        await save(room)
+        await publish(room)
+        return await public(room)
+
+
+@router.post('/rooms/{room_id}/profile')
+async def update_profile(room_id: str, request: Profile):
+    async with locks[room_id]:
+        room = await load(room_id)
+        member(room, request.player_id)
+        await sync(room)
+        if room.data['stage'] == 'playing':
+            raise HTTPException(409, '本局结束后可以修改资料')
+        values = rule(room._member, request.name, request.avatar)
+        room.data['members'][request.player_id].update(name=values['name'], avatar=values['avatar'])
+        await save(room)
+        await publish(room)
+        return await public(room)
+
+
 @router.post('/rooms/{room_id}/ready')
 async def ready(room_id: str, request: ReadyRequest):
     async with locks[room_id]:
@@ -448,7 +506,7 @@ async def return_room(room_id: str, request: MemberRequest):
         transitions.add(room_id)
         try:
             await detach_game(room.data)
-            room.data.update(stage='waiting', game_state=None, session_id=None)
+            room.data.update(stage='waiting', game_state=None, session_id=None, pending_member_ids=[])
             room.invalidate()
             await save(room)
         finally:

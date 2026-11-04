@@ -29,24 +29,28 @@ PYTHON_IMAGE=python:3.12-slim-bookworm docker compose -p chesse-integration up -
 
 ## 游戏大厅
 
-首页先选游戏开房，也可先建空房，再邀请朋友决定玩什么。通过六位房间号、邀请链接或本地生成的二维码加入；HTTP 环境无法使用剪贴板时提供手动复制文本。匿名资料保存在当前设备，无需注册。
+首页直接展示房间列表，按房主头像与昵称找到朋友，点击即可加入。房间展示游戏、人数、阶段和密码锁标记；无需扫码或输入房间号。创建时可选游戏、也可先建空房，密码选填（4–20 位非空白字符），默认不设。列表每 5 秒刷新，支持手动刷新。
 
 - 公共房间最多 12 人，默认按加入顺序入座，超出游戏上限的成员观战。玩家可选择参与或观战，房主可调整参与名单。
 - 奶酪大盗支持 5–8 人、瞎掰王支持 3–9 人、Holdem 支持 2–12 人。只有入座玩家需要准备。
 - 全员在线且准备后，由服务端执行 3 秒倒计时并自动开局。取消准备、参与者离线会取消倒计时；设置或参与名单变化会让所有人重新准备。新观众不影响倒计时。
 - 初次进入游戏不需要再次准备。Holdem 后续每手的准备、补码流程和瞎掰王每轮选题后的查看确认仍在游戏内进行。
-- 游戏进行中禁止新成员加入和成员离开，已有成员可刷新重连。结算后房主点击“再来一局 / 换游戏”返回等待室，保留成员和座位并清空准备。结束 Holdem 筹码局后重开会重新发筹码。
+- 游戏进行中新成员可加入候场并自行离开，不参与当前对局，也不能连接游戏或查看私密信息。候场等待整局结束（Holdem 为整场筹码局），房主返回等待室后主动入座；保留原座位并清空准备。当前对局成员仍需结束后离房，已有成员可刷新重连。结算后“再来一局”“换游戏”分开显示，Holdem 重开整场明确提示重新发放初始筹码。
 - 房主可在等待室转交房主或移出成员；被移出者本房间内不能重新加入。房主离线 60 秒后转交给最早加入的在线成员，进行中的对局延后到结束再处理。
 - 同设备多标签页以最新连接为准，旧标签页暂停重连。后端重启保留已有对局，取消尚未完成的开局倒计时并清空准备。
-- 首版设备身份不提供账户认证或跨设备身份同步，请勿将房间号及设备 ID 当作强身份验证。大厅不公开枚举房间号和成员资料。
+- 同一浏览器通过匿名设备 ID 记住昵称与头像，刷新、重连或换房自动复用。点击头像可修改，房间内修改同步给所有成员；游戏中须结束后修改。清除浏览器数据、无痕模式、更换浏览器视为新设备，不提供账号或跨设备同步。设备 ID 并非强身份认证。
+- 房主可在等待室设置、修改或移除密码；使用 scrypt 哈希保存，所有公开接口不返回密码或哈希。已加入成员重连无需密码，主动离房后再加入需重新验证；被移出成员不能通过密码绕过封禁。
+- 手机竖屏布局使用统一底部弹层，游戏中查看房间不会卸载对局。身份默认隐藏，切后台或查看公共房间时遮蔽；操作等待服务端确认，断线时不重放下注或投票。
 
 ### 公共接口与兼容
 
-`GET /lobby/games` 提供人数、入口和设置描述；`GET /lobby/rooms/{id}/preview` 提供邀请预览，不返回成员身份。房间状态包含 `stage`、`seats`、成员 `ready`、`revision` 和服务端倒计时截止时间。状态通过房间 WebSocket 推送，客户端每 5 秒请求刷新作为对局阶段同步补偿。
+`GET /lobby/games` 提供人数、入口和设置描述；`GET /lobby/rooms` 返回房间摘要列表，包含 `id`、`owner_name`、`owner_avatar`、`game_id`、`stage`、`count`、`capacity`、`created_at`、`has_password`、`joinable`，不返回成员 ID 或游戏私有状态。可加入房间优先，游戏中候场其次、满房最后，组内按创建时间倒序和 ID 排序。`GET /lobby/rooms/{id}/preview` 返回同样的单房摘要。房间状态包含 `stage`、`seats`、成员 `ready`、`revision` 和服务端倒计时截止时间。状态通过房间 WebSocket 推送，客户端每 5 秒请求刷新作为对局阶段同步补偿。
+
+`POST /lobby/rooms` 和 `/rooms/{id}/join` 接受可选 `password`。`POST /rooms/{id}/password` 接受 `{player_id,password}`，空密码移除限制；`POST /rooms/{id}/profile` 接受 `{player_id,name,avatar}`，更新当前成员资料。以上路径均在 `/lobby` 下。
 
 `POST /lobby/rooms/{id}/game` 只保存配置，不再直接创建游戏。`/seat` 设置入座状态，`/ready` 使用显式布尔值及配置版本，`/return` 由房主在结算后返回等待室，`/manage?action=transfer|kick` 管理成员。全部准备后由服务端创建唯一会话，客户端无法跳过准备直接开局。
 
-旧房间字段读取时补齐，保留已有对局及 Redis 命名空间。所有 API 和等待室前端需一起发布；旧版大厅脚本不兼容新版准备流程。入口 JS/CSS 使用版本参数及重新验证缓存。Redis 和后端继续使用单 worker，禁止删除已有卷。
+房间增加 `password_hash`、`created_at`、`pending_member_ids` 内部字段；旧房间缺省为无密码、创建时间 0、无候场成员。公共状态只允许明确列出的字段，包含 `has_password` 与候场名单，不包含密码哈希。旧房间字段读取时补齐，保留已有对局及 Redis 命名空间。所有 API 和等待室前端需一起发布；旧版大厅脚本不兼容新版准备流程。入口 JS/CSS 使用版本参数及重新验证缓存。Redis 和后端继续使用单 worker，禁止删除已有卷。
 
 ## 开发与验证
 
@@ -100,3 +104,20 @@ LOBBY_URL=http://localhost:18089 BLUFF_RESTART_CONTAINER=chesse-bluff-test-backe
 后一个脚本包含真实 60 秒房主转交、倒计时中重启取消和 Holdem 进行中重启恢复，会重启该专用测试后端，不应对正式环境运行。
 
 本轮实施前的本地源码快照保存在本次 Codex 工作目录 `work/chesse-backup/before-platform.tar.gz`。dify 源码备份位于 `/home/zhangjialin/chesse-backups/before-waiting-room.tar.gz`，旧镜像标记为 `chesse-integration-backend:before-waiting-room` 和 `chesse-integration-frontend:before-waiting-room`。回退需停止测试实例、恢复源码并使用旧镜像重新创建前后端；不删除 Redis 卷。新流程产生的等待室数据应继续使用新版管理，回退前先结束测试对局。
+
+## 手机体验验证（2026-11-04）
+
+新增 `backend/tests/test_mobile_lobby.py` 验证房间列表、密码、资料、候场及三款游戏连接权限。`tests/lobby-ui.test.cjs` 覆盖直接入房、密码输入保留、资料复用、候场视图及 iframe 保留。Holdem 支持 `refresh` WebSocket 消息，返回前台先同步再允许操作；游戏与大厅通过同源消息报告连接状态和遮蔽私密信息，不传递身份或答案。
+
+共享手机变量位于 `lobby-web/mobile-tokens.css`，由统一 Nginx 提供 `/mobile-tokens.css`；单独运行游戏开发服务器时不包含完整大厅资源。各游戏入口与后端需一起发布。iOS Safari 和 Android Chrome 的真实设备验收需单独安排，浏览器仿真不等同于真机结果。
+
+可选的手机浏览器自动化需要独立安装 Playwright，并通过环境变量指定模块和 Chromium：
+
+```bash
+PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome \
+LOBBY_URL=http://localhost:18088 node scripts/smoke_mobile.cjs
+PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome \
+LOBBY_URL=http://localhost:18088 node scripts/smoke_mobile_games.cjs
+```
+
+两个脚本仅允许 18088/18089 隔离端口，分别验证房间/密码/设备资料/候场及奶酪、瞎掰王的完整手机操作。截图写入 `/tmp/chesse-*-360.png`；成功后通过正常离房接口清理自身房间。

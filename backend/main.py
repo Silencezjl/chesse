@@ -668,7 +668,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
     except Exception:
         await websocket.close(code=4404)
         return
-    if (not public_room.data.get('session_id') or public_room.data['game_id'] != 'cheese') or player_id not in public_room.data['members']:
+    if (not public_room.data.get('session_id') or public_room.data['game_id'] != 'cheese') or (player_id not in public_room.data['members'] or player_id in public_room.data['pending_member_ids']):
         await websocket.close(code=4403)
         return
     await websocket.accept()
@@ -767,7 +767,7 @@ async def holdem_socket(websocket: WebSocket, room_id: str, player_id: str):
     except Exception:
         await websocket.close(code=4404)
         return
-    if room_id in lobby_api.transitions or room.data['game_id'] != 'holdem' or player_id not in room.data['members']:
+    if room_id in lobby_api.transitions or room.data['game_id'] != 'holdem' or (player_id not in room.data['members'] or player_id in room.data['pending_member_ids']):
         await websocket.close(code=4403)
         return
     await game_socket(websocket, room_id, player_id)

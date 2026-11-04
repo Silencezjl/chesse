@@ -15,7 +15,10 @@ class ConnectionManager:
         await ws.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
+        previous = self.rooms[room_id].get(player_id)
         self.rooms[room_id][player_id] = ws
+        if previous and previous is not ws:
+            await previous.close(code=4001)
 
     def disconnect(self, room_id: str, player_id: str):
         if room_id in self.rooms:

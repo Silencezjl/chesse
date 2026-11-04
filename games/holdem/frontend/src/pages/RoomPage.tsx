@@ -37,6 +37,7 @@ export default function RoomPage() {
   
   const {
     send,
+    actionPending,
     winAnimPlayingRef,
     winAnimPlaying,
     setWinAnimPlaying,
@@ -46,6 +47,10 @@ export default function RoomPage() {
     winAnimPotPos,
     setWinAnimPotPos
   } = useRoomWebSocket(roomId);
+
+  useEffect(() => {
+    if (window.parent !== window) window.parent.postMessage({type:'game_connection', connected}, location.origin);
+  }, [connected]);
 
   const prevPhaseRef = useRef<string | null>(null);
   const prevConnectionsRef = useRef<Record<string, boolean>>({});
@@ -233,7 +238,8 @@ export default function RoomPage() {
   const handleReject = () => send({ type: 'reject_settle' });
   const handleRebuy = () => send({ type: 'rebuy' });
   const handleCashout = () => send({ type: 'cashout' });
-  const handleEndGame = () => send({ type: 'end_game' });
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const handleEndGame = () => setConfirmEnd(true);
 
   // Final standings screen
   if (standings) {
@@ -344,7 +350,7 @@ export default function RoomPage() {
 
       {/* Bottom fixed area - my info + actions */}
       {isPlaying && myPlayer && !isShowdown && (
-        <div className="flex-none z-10 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-4 py-2">
+        <div className="mobile-action flex-none z-10 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-4 py-2">
           {/* My chips info */}
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-400">
@@ -365,7 +371,7 @@ export default function RoomPage() {
               <MyChipStack amount={myPlayer.chips} size={28} />
             </div>
           </div>
-          <ActionPanel room={room} playerId={playerId} onAction={handleAction} />
+          <ActionPanel room={room} playerId={playerId} onAction={handleAction} disabled={!connected || actionPending} />
         </div>
       )}
 
@@ -380,7 +386,7 @@ export default function RoomPage() {
 
       {/* Bottom fixed cashout/rebuy buttons for between-hands */}
       {isWaiting && !firstHand && myPlayer && (canCashout || canRebuy) && (
-        <div className="flex-none z-10 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-4 py-3">
+        <div className="mobile-action flex-none z-10 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-4 py-3">
           {canCashout && (
             <button onClick={handleCashout} className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl text-white font-bold text-lg transition">
               清码 -{room.initial_chips} → 剩余 {myPlayer.chips - room.initial_chips}
@@ -394,6 +400,7 @@ export default function RoomPage() {
         </div>
       )}
 
+      {confirmEnd && <div className="fixed inset-0 z-50 bg-black/70 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="结束筹码局" className="w-full bg-slate-900 rounded-2xl p-5 space-y-4"><h2 className="text-xl font-bold">结束整场筹码局？</h2><p>将结算整场筹码，下一场重新发放初始筹码。</p><div className="grid grid-cols-2 gap-3"><button className="bg-slate-700 rounded-xl" onClick={() => setConfirmEnd(false)}>继续玩</button><button className="bg-red-700 rounded-xl" disabled={!connected || actionPending} onClick={() => { send({type:'end_game'}); setConfirmEnd(false); }}>确认结束</button></div></section></div>}
       {/* Bet-to-pot animation overlay */}
       {betAnim && (
         <BetToPotAnimation
