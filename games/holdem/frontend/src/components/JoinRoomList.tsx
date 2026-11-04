@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React from 'react';
 import { RoomListItem } from '../types';
 
@@ -22,7 +23,7 @@ export default function JoinRoomList({ rooms, loading, onJoin, onRefresh }: Prop
           <div key={r.id} className="bg-slate-800 rounded-xl p-4 flex items-center justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">{r.owner_emoji}</span>
+                <span className="text-xl"><Avatar value={r.owner_emoji} /></span>
                 <span className="font-semibold text-white">{r.owner_name}</span>
                 <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-400">#{r.id}</span>
               </div>

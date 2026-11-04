@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React, { useState } from 'react';
 import { Standing, Room } from '../types';
 
@@ -133,7 +134,7 @@ export default function FinalStandings({
               <span className="text-lg font-bold text-slate-400 w-6">
                 {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`}
               </span>
-              <span className="text-xl">{s.player_emoji}</span>
+              <span className="text-xl"><Avatar value={s.player_emoji} /></span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-white">{s.player_name}</span>

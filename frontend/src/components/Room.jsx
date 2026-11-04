@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React, { useState, useEffect } from 'react';
 import {
   Copy, LogOut, Check, Eye, Vote, Users, Settings, Crown,
@@ -89,7 +90,7 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
           我
         </div>
       )}
-      <div className="text-3xl md:text-4xl">{player.avatar}</div>
+      <div className="text-3xl md:text-4xl"><Avatar value={player.avatar} /></div>
       <div className="text-sm font-medium truncate max-w-full flex items-center gap-1">
         {index != null && <span className="text-white/40">{index}.</span>}
         {player.name}
@@ -410,7 +411,7 @@ export default function Room({ ws }) {
                     <span key={m.id} className={`text-xs px-2 py-0.5 rounded-full ${
                       m.is_thief ? groupThiefBadgeClass : groupMouseBadgeClass
                     }`}>
-                      {m.avatar} {m.name} {m.is_thief ? '(大盗!)' : ''}
+                      <Avatar value={m.avatar} /> {m.name} {m.is_thief ? '(大盗!)' : ''}
                     </span>
                   ))}
                 </div>
@@ -458,7 +459,7 @@ export default function Room({ ws }) {
                   const p = players[pid];
                   return (
                     <div key={pid} className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${infoChipClass}`}>
-                      <span>{p?.avatar}</span>
+                      <span><Avatar value={p?.avatar} /></span>
                       <span className={infoMutedClass}>{p?.name}</span>
                       <span className={`font-bold ${diceValueClass}`}>{dice}</span>
                     </div>
@@ -537,7 +538,7 @@ export default function Room({ ws }) {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-lg leading-none">{entry.avatar}</span>
+                        <span className="text-lg leading-none"><Avatar value={entry.avatar} /></span>
                         <span className="font-medium break-all">{entry.name}</span>
                         {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
                         {entry.outsider_label && (
@@ -619,14 +620,14 @@ export default function Room({ ws }) {
           <div className="flex flex-wrap gap-2">
             {spectatorList.map(s => (
               <span key={s.id} className={`text-xs px-2 py-1 rounded-full bg-white/10 ${!s.connected ? 'opacity-40' : ''}`}>
-                {s.avatar} {s.name}
+                <Avatar value={s.avatar} /> {s.name}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p>{players[confirmation.target]?.avatar} {players[confirmation.target]?.name}</p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
+      {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p><Avatar value={players[confirmation.target]?.avatar} /> {players[confirmation.target]?.name}</p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
       {/* Action Buttons */}
       <fieldset disabled={!ws.connected || ws.actionPending} className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
         {isSpectator && phase !== 'waiting' && (

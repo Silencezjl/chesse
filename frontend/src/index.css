@@ -17,22 +17,22 @@ body {
 
 /* Phase-based background themes */
 body.theme-dark {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  background: linear-gradient(135deg, #493e60 0%, #1b1729 100%);
   color: #f8fafc;
 }
 
 body.theme-night {
-  background: linear-gradient(135deg, #0f172a 0%, #020617 50%, #1a1033 100%);
+  background: linear-gradient(135deg, #1b1729 0%, #100d1a 50%, #271c40 100%);
   color: #f8fafc;
 }
 
 body.theme-day {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fde68a 100%);
+  background: linear-gradient(135deg, #faf8ff 0%, #f0eaff 50%, #e6dcfb 100%);
   color: #292524;
 }
 
 body.theme-result {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #bbf7d0 100%);
+  background: linear-gradient(135deg, #fff7ed 0%, #f8edff 50%, #e9e1ff 100%);
   color: #292524;
 }
 
@@ -45,7 +45,7 @@ body.theme-result .glass-card {
 
 body.theme-day,
 body.theme-result {
-  color: #1e293b;
+  color: #493e60;
 }
 
 body.theme-day .text-white\/50,
@@ -65,7 +65,7 @@ body.theme-result .text-white\/80 {
 
 body.theme-day .text-white,
 body.theme-result .text-white {
-  color: #1e293b;
+  color: #493e60;
 }
 
 body.theme-day .border-white\/10,
@@ -97,14 +97,14 @@ body.theme-day .input-field,
 body.theme-result .input-field {
   background: rgba(0, 0, 0, 0.06);
   border-color: rgba(0, 0, 0, 0.15);
-  color: #1e293b;
+  color: #493e60;
 }
 
 body.theme-day .btn-secondary,
 body.theme-result .btn-secondary {
   background: rgba(0, 0, 0, 0.08);
   border-color: rgba(0, 0, 0, 0.15);
-  color: #1e293b;
+  color: #493e60;
 }
 
 /* Fix low-contrast colors on light themes */
@@ -137,12 +137,12 @@ body.theme-result .text-red-400 {
 
 body.theme-day .text-blue-300,
 body.theme-result .text-blue-300 {
-  color: #2563eb;
+  color: #694cce;
 }
 
 body.theme-day .text-green-300,
 body.theme-result .text-green-300 {
-  color: #16a34a;
+  color: #694cce;
 }
 
 body.theme-day .text-purple-300,
@@ -251,9 +251,9 @@ body.theme-result .bg-purple-500\/20 {
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-cheese-400 to-cheese-500 text-night-900 font-bold rounded-xl 
-         hover:from-cheese-300 hover:to-cheese-400 transition-all duration-200 
-         active:scale-95 shadow-lg shadow-cheese-500/25;
+  @apply inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-xl
+         hover:from-blue-500 hover:to-blue-600 transition-all duration-200
+         active:scale-95 shadow-lg shadow-blue-500/25;
 }
 
 .btn-secondary {
@@ -267,8 +267,8 @@ body.theme-result .bg-purple-500\/20 {
 }
 
 .input-field {
-  @apply w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white 
-         placeholder-white/40 focus:outline-none focus:border-cheese-400 focus:ring-1 
+  @apply w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white
+         placeholder-white/40 focus:outline-none focus:border-cheese-400 focus:ring-1
          focus:ring-cheese-400 transition-all;
 }
 

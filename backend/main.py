@@ -105,12 +105,15 @@ async def startup_event():
         if restored:
             logger.info(f"Restored {restored} rooms from Redis")
 
+    lobby_api.start_cleanup()
     asyncio.create_task(cleanup_stale_rooms_task())
     asyncio.create_task(periodic_save_task())
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    from lobby import api as lobby_api
+    await lobby_api.stop_cleanup()
     # Save all rooms before shutdown (must await, process is exiting)
     for room in game_manager.rooms.values():
         await _save_room_to_redis(room.serialize())

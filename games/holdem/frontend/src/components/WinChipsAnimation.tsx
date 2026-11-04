@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { decomposeChips, ChipDenom } from './ChipDisplay';
@@ -104,7 +105,7 @@ export default function WinChipsAnimation({ winners, potPosition, durationMs = 2
               <div className="flex items-center gap-3 flex-wrap justify-center">
                 {winners.map((w) => (
                   <div key={w.playerId} className="flex items-center gap-1.5">
-                    <span className="text-xl">{w.playerEmoji}</span>
+                    <span className="text-xl"><Avatar value={w.playerEmoji} /></span>
                     <span className="text-white font-bold text-sm">{w.playerName}</span>
                     <span className="text-yellow-300 font-bold text-sm">+{w.amount}</span>
                   </div>

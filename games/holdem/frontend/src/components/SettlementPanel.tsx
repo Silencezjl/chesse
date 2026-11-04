@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React, { useState, useEffect, useRef } from 'react';
 import { Room } from '../types';
 
@@ -61,7 +62,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
         <div className="text-center">
           <h3 className="text-lg font-bold text-yellow-400">🏆 结算确认</h3>
           <p className="text-xs text-slate-400 mt-1">
-            {proposer?.emoji} {proposer?.name} 发起了结算方案
+            <Avatar value={proposer?.emoji} /> {proposer?.name} 发起了结算方案
           </p>
         </div>
 
@@ -83,7 +84,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
                   const share = Math.floor(pot.amount / winners.length);
                   return (
                     <span key={wid} className="text-xs bg-yellow-900/40 text-yellow-300 px-2 py-0.5 rounded">
-                      {w.emoji} {w.name} (+{share})
+                      <Avatar value={w.emoji} /> {w.name} (+{share})
                     </span>
                   );
                 })}
@@ -103,7 +104,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
                 <span key={pid} className={`text-[10px] px-1.5 py-0.5 rounded ${
                   confirmed ? 'bg-green-900/40 text-green-400' : 'bg-slate-700 text-slate-500'
                 }`}>
-                  {p?.emoji} {confirmed ? '✓' : '...'}
+                  <Avatar value={p?.emoji} /> {confirmed ? '✓' : '...'}
                 </span>
               );
             })}
@@ -170,7 +171,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
                       : 'border-slate-600 bg-slate-700 text-slate-300 hover:border-slate-500'
                   } ${isSinglePlayer ? 'opacity-80 cursor-default' : ''}`}
                 >
-                  <span>{p.emoji}</span>
+                  <span><Avatar value={p.emoji} /></span>
                   <span className="text-xs truncate">{p.name}</span>
                   {isSelected && <span className="ml-auto text-yellow-400">✓</span>}
                 </button>

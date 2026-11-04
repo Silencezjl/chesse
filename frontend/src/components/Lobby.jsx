@@ -1,15 +1,9 @@
+import Avatar from './Avatar';
 import React, { useState, useEffect } from 'react';
 import { Plus, LogIn, Shuffle, ChevronRight, Eye, EyeOff, RefreshCw, Users } from 'lucide-react';
 import { getSavedName, savePlayerName, getSavedAvatar, savePlayerAvatar } from '../hooks/useWebSocket';
 
-const AVATARS = [
-  "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
-  "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦",
-  "🐱", "🐶", "🐺", "🦝", "🦄", "🐲", "🦉", "🦅",
-  "🐿️", "🦔", "🐾", "🐳", "🐬", "🦈", "🐙", "🦑",
-  "🦋", "🐞", "🐝", "🦎", "🐢", "🐍", "🦩", "🦜",
-  "🐏", "🦌", "🐘", "🦒", "🦘", "🐊", "🦀", "🐡",
-];
+const AVATARS = window.GameAvatars?.ids || ['avatar-01'];
 
 const NAMES = [
   "小白", "大黄", "阿花", "豆豆", "球球", "旺财", "小黑", "毛毛",
@@ -153,7 +147,7 @@ export default function Lobby({ ws }) {
           <div className="flex items-center gap-4">
             <div className="text-5xl cursor-pointer hover:scale-110 transition-transform"
               onClick={() => setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)])}>
-              {avatar}
+              <Avatar value={avatar} size={48} />
             </div>
             <div className="flex-1">
               <input
@@ -211,10 +205,10 @@ export default function Lobby({ ws }) {
                 key={a}
                 onClick={() => setAvatar(a)}
                 className={`text-2xl p-1.5 rounded-lg transition-all ${
-                  avatar === a ? 'bg-cheese-500/30 scale-110 ring-2 ring-cheese-400' : 'hover:bg-white/10'
+                  window.GameAvatars?.normalize(avatar) === a ? 'bg-cheese-500/30 scale-110 ring-2 ring-cheese-400' : 'hover:bg-white/10'
                 }`}
               >
-                {a}
+                <Avatar value={a} />
               </button>
             ))}
           </div>

@@ -1,0 +1,10 @@
+{
+  "tool": "built-in imagegen",
+  "reference": "party-logo-v1.png",
+  "common_prompt": "Use case: logo-brand. Create ONE standalone game icon for a mobile board-game lobby. Input image is a STYLE REFERENCE ONLY: preserve its warm butter yellow, forest green #24644e and cream, soft rounded bold shapes, charming mischievous personality, gently shaded illustrated mascot finish. Do NOT copy its group/table composition. Match its visual family. Simple, distinctive silhouette legible at small app-icon size, square centered composition with even 12% transparent margins. True transparent background, no tile background. NO text, letters, numbers, watermark, extra decorations, tiny details, multiple alternatives or presentation mockup. ",
+  "subjects": {
+    "game-cheese-v1": "Subject: a cute clever little mouse thief with big rounded ears wearing a simple deep forest-green eye mask, hugging one chunky golden triangular cheese wedge with two large holes. Mouse is warm cream, ears muted golden; cheeky smile. A friendly social-deduction board game, not a frightening criminal. Bust-like compact emblem, cheese immediately recognizable.",
+    "game-holdem-v1": "Subject: two overlapping warm-cream rounded playing cards behind three chunky forest-green and golden poker chips. One large forest-green spade suit on the front card and a small muted warm-red heart on the rear card, no card ranks or lettering. The front gold chip has a subtle confident smiling face. Compact friendly poker chip-manager emblem, playful yet polished.",
+    "game-bluff-v1": "Subject: a single charismatic golden theatrical jester face with a sly uneven grin, one eyebrow raised, wearing a simple two-point forest-green jester hat with golden rounded tips; one small warm-cream theatrical half-mask is held at its cheek. A friendly bluffing storyteller who is clearly making something up, funny and expressive rather than sinister. Broad simple facial shapes, compact head-only emblem."
+  }
+}

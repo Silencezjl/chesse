@@ -13,7 +13,7 @@ async function app(start=initial(), directory=[]) {
   w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   w.fetch=async(url,opts)=>{
     calls.push({url,body:opts?.body?JSON.parse(opts.body):undefined});
-    if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'🧀',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
+    if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
     if(url==='/lobby/rooms'&&!opts?.body)return {ok:true,json:async()=>clone(directory)};
     if(url.includes('/players/'))return {ok:true,json:async()=>({room_id:room?.id || null})};
     if(url.endsWith('/preview'))return {ok:true,json:async()=>clone(directory[0])};
@@ -30,7 +30,7 @@ async function app(start=initial(), directory=[]) {
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
-  w.WebSocket=Socket;w.eval(source);await tick();await tick();
+  w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
   return {w,dom,calls,sockets,intervals,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }
 test('room updates preserve an unfinished settings edit and input focus',async()=>{
@@ -70,7 +70,7 @@ test('directory joins an unlocked room directly using saved device profile',asyn
     assert.equal(a.w.document.querySelector('#join-code'),null);
     a.w.document.querySelector('[data-join]').click();await tick();await tick();
     const call=a.calls.find(c=>c.url.endsWith('/join'));
-    assert.equal(call.body.name,'房主');assert.equal(call.body.avatar,'🐭');
+    assert.equal(call.body.name,'房主');assert.equal(call.body.avatar,'avatar-01');
     assert.equal(a.w.document.querySelector('[role=dialog]'),null);
   }finally{a.dom.window.close();}
 });
@@ -98,9 +98,9 @@ test('editing profile persists only after server success and cancellation keeps 
     a.w.document.querySelector('#my-profile').click();let input=a.w.document.querySelector('#name');input.value='新名字';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
     a.w.document.querySelector('#close-sheet').click();assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');
     a.w.document.querySelector('#my-profile').click();input=a.w.document.querySelector('#name');input.value='新名字';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
-    a.w.document.querySelector('[data-avatar="🦊"]').click();
+    a.w.document.querySelector('[data-avatar="avatar-02"]').click();
     a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
-    assert.equal(a.w.localStorage.getItem('lobby_name'),'新名字');assert.equal(a.w.localStorage.getItem('lobby_avatar'),'🦊');
+    assert.equal(a.w.localStorage.getItem('lobby_name'),'新名字');assert.equal(a.w.localStorage.getItem('lobby_avatar'),'avatar-02');
   }finally{a.dom.window.close();}
 });
 test('removal while a room sheet is open closes it without dereferencing a missing room',async()=>{
@@ -116,5 +116,20 @@ test('a superseded tab conceals its game and pauses reconnection',async()=>{
     a.sockets.at(-1).onclose({code:4001});
     assert.equal(a.w.document.querySelector('#game-shell').hidden,true);
     assert.match(a.w.document.body.textContent,/另一个标签页/);
+  }finally{a.dom.window.close();}
+});
+test('header keeps the logo without a wordmark and renders the saved profile as an image',async()=>{
+  const a=await app();try{
+    const brand=a.w.document.querySelector('#brand');assert.equal(brand.textContent.trim(),'');assert.equal(brand.getAttribute('aria-label'),'游戏大厅');
+    const image=a.w.document.querySelector('#my-profile img');assert.equal(image.getAttribute('src'),'/assets/avatars/avatar-01.svg');
+    assert.equal(a.w.document.querySelector('#my-profile').textContent,'房主');
+  }finally{a.dom.window.close();}
+});
+test('avatar URLs stay local for legacy values, supported IDs and untrusted values',async()=>{
+  const a=await app();try{
+    assert.equal(a.w.GameAvatars.normalize('🦊'),'avatar-02');
+    assert.equal(a.w.GameAvatars.src('avatar-08'),'/assets/avatars/avatar-08.svg');
+    assert.equal(a.w.GameAvatars.src('https://example.test/track.svg'),'/assets/avatars/avatar-01.svg');
+    assert.equal(a.w.GameAvatars.ids.length,8);
   }finally{a.dom.window.close();}
 });

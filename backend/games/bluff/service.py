@@ -74,6 +74,9 @@ async def tick(room_id, generation):
 
 
 class BluffRuntime:
+    def has_connections(self, room_id):
+        return bool(sockets.get(room_id))
+
     async def snapshot(self, room_id):
         return await load(room_id)
 

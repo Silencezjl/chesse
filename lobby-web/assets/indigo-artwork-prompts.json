@@ -1,0 +1,22 @@
+{
+  "tool": "built-in imagegen",
+  "common_prompt": "Use case: precise-object-edit. Edit the supplied approved game icon for a unified INDIGO AND WARM GOLD website theme. This is a precise palette update, not a redesign. Preserve the original character, expression, pose, proportions, objects, composition, rounded silhouette, glossy softly shaded illustration style and transparent background. Replace ALL forest-green/teal colors, including green outlines, facial features, clothing, objects and shaded green surfaces, with a coherent rich BLUE-VIOLET family: main indigo #5945ce, deep violet #35266d, lavender highlights #9d84f0. Absolutely no green or teal remains. Keep golden yellow objects, cream/white details, gold shading, and any coral-red accents recognizable and warm; slightly soften gold toward butter yellow to complement indigo. Maintain bold clear details legible at 48px, clean smooth edges, generous even transparent margins. No text, letters, numbers, extra characters, added objects, background tile, mockup, watermark or extra decorations. One standalone finished icon. Actual transparent background. ",
+  "subjects": {
+    "party-logo-indigo-v1": {
+      "reference": "party-logo-v1.png",
+      "detail": "Preserve the three happy friends around the round table and the mischievous die. Recolor the round table and every green facial feature to indigo; keep the friends and die warm gold."
+    },
+    "game-cheese-indigo-v1": {
+      "reference": "game-cheese-v1.png",
+      "detail": "Preserve the mischievous masked mouse hugging its cheese wedge. Recolor its forest-green mask, hood and facial details to indigo; keep its cream face, golden ears and golden cheese."
+    },
+    "game-holdem-indigo-v1": {
+      "reference": "game-holdem-v1.png",
+      "detail": "Preserve the two overlapping playing cards and three poker chips. Recolor the green spade and green chips and mischievous face to indigo; keep cream cards, golden center chip and coral heart."
+    },
+    "game-bluff-indigo-v1": {
+      "reference": "game-bluff-v2.png",
+      "detail": "Preserve the sly half-lidded grinning cat, toothy smirk, tilted top hat and collar bell exactly. Recolor its green fur, hat band, whisker outlines and facial contours to indigo with lavender highlights; keep golden hat, eyes and bell, and cream muzzle and chest. Do not turn it into a jester."
+    }
+  }
+}

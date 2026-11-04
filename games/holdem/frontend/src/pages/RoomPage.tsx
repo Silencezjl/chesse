@@ -1,3 +1,4 @@
+import Avatar from '../components/Avatar';
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
@@ -256,7 +257,7 @@ export default function RoomPage() {
     return (
       <div className="flex items-center justify-center min-h-[100dvh]">
         <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">🃏</div>
+          <img src="/assets/game-holdem-indigo-v1.webp" alt="" width="80" height="80" className="mx-auto mb-4" />
           <p className="text-slate-400">连接房间中...</p>
         </div>
       </div>
@@ -354,7 +355,7 @@ export default function RoomPage() {
           {/* My chips info */}
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-400">
-              {myPlayer.emoji} {myPlayer.name}
+              <Avatar value={myPlayer.emoji} /> {myPlayer.name}
             </span>
             <div className="flex items-center gap-2">
               {myPlayer.total_rebuys > 0 && (

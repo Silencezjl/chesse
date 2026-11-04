@@ -4,8 +4,8 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const uid = () => globalThis.crypto?.randomUUID?.() || `p_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const playerId = localStorage.getItem('lobby_player_id') || uid();
 localStorage.setItem('lobby_player_id', playerId);
-const avatars = ['🐭','🦊','🐼','🐸','🐱','🐶','🐰','🐻'];
-let name = localStorage.getItem('lobby_name') || '', avatar = localStorage.getItem('lobby_avatar') || '🐭';
+const avatars = GameAvatars.ids;
+let name = localStorage.getItem('lobby_name') || '', avatar = GameAvatars.normalize(localStorage.getItem('lobby_avatar'));
 let games = [], rooms = [], room = null, error = '', listError = '', busy = false, booting = true;
 let socket = null, reconnect = null, connected = false, superseded = false, showGame = true, mountedSession = '';
 let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
@@ -23,6 +23,7 @@ async function api(path, data) {
 }
 const profile = () => ({player_id:playerId, name:name.trim(), avatar});
 const info = id => games.find(g => g.id === id);
+const gameIcon = (g, className='game-icon') => `<img class="${className}" src="${esc(g?.icon || '/assets/party-logo-indigo-v1.webp')}" alt="" width="64" height="64" decoding="async">`;
 const editable = () => room && ['choosing','waiting','countdown'].includes(room.stage);
 const isOwner = () => room?.owner_id === playerId;
 const pending = () => room?.pending_member_ids?.includes(playerId);
@@ -80,7 +81,7 @@ function updateRoom(next) {
   if(pending())showGame=false;
   serverOffset=next.server_time*1000-Date.now();
   localStorage.setItem('lobby_room_id',next.id);
-  const me=next.members[playerId];name=me.name;avatar=me.avatar;saveProfile();
+  const me=next.members[playerId];name=me.name;avatar=GameAvatars.normalize(me.avatar);saveProfile();
   const key=`${room.id}:${room.game_id}:${room.revision}`;
   if(draftKey!==key){settingsDraft={...room.options};draftKey=key;}
   render();
@@ -132,8 +133,8 @@ function homeView() {
   return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room">＋ 创建房间</button></section>
   <div class="section-head"><h2>朋友的房间 <small>${rooms.length}</small></h2><button class="secondary" id="refresh-list">刷新</button></div>
   ${listError?`<div class="error" role="alert">${esc(listError)} · 点击刷新重试</div>`:''}
-  <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${esc(r.owner_avatar)}</div><div class="room-summary"><h3>${esc(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<section class="empty-state card"><span>🎲</span><h3>第一桌，等你来开</h3><p class="muted">创建房间，朋友就能在这里找到你。</p></section>`}</div>
-  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}"><span>${g.icon}</span><strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
+  <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${GameAvatars.html(r.owner_avatar)}</div><div class="room-summary"><h3>${esc(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<section class="empty-state card">${gameIcon(null)}<h3>第一桌，等你来开</h3><p class="muted">创建房间，朋友就能在这里找到你。</p></section>`}</div>
+  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}">${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
 }
 function settingsView() {
   const g=info(room.game_id);if(!g)return '';
@@ -143,7 +144,7 @@ function settingsView() {
 function seatView(pid,index) {
   if(!pid)return `<div class="seat empty"><span>＋</span><small>等待朋友入座</small></div>`;
   const p=room.members[pid];
-  return `<button class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}" data-member="${esc(pid)}"><span class="face">${esc(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${esc(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small></button>`;
+  return `<button class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}" data-member="${esc(pid)}"><span class="face">${GameAvatars.html(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${esc(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small></button>`;
 }
 function actionView() {
   const me=room.members[playerId],g=info(room.game_id),seated=room.seats.includes(playerId);
@@ -170,12 +171,12 @@ function roomView() {
   return `<div class="room-head"><div><h1>${esc(roomTitle(room))}</h1><div class="status"><span class="dot ${connected?'':'off'}"></span>${connected?stageName(room.stage):superseded?'当前标签页已暂停':'连接恢复中…'} · ${Object.keys(room.members).length}/12 人 ${room.has_password?'· 🔒':''}</div></div><button class="secondary" id="room-menu">更多</button></div>
   ${room.start_error?`<div class="error">${esc(room.start_error)}</div>`:''}
   ${pending()?'<div class="notice">你已加入候场。本局信息暂不开放，结束后可以入座。</div>':''}
-  <section class="card table-card"><div class="row"><div class="game-heading"><span class="mini-symbol">${g?.icon || '🎲'}</span><div><h2>${esc(g?.title || '今晚玩什么？')}</h2><p class="muted">${g?`${g.minimum}–${g.maximum} 人参与`:'先集合，再决定也没关系'}</p></div></div>${isOwner()&&editable()?'<button class="link" id="game-picker">选游戏</button>':''}</div>
+  <section class="card table-card"><div class="row"><div class="game-heading">${gameIcon(g,'game-icon room-game-icon')}<div><h2>${esc(g?.title || '今晚玩什么？')}</h2><p class="muted">${g?`${g.minimum}–${g.maximum} 人参与`:'先集合，再决定也没关系'}</p></div></div>${isOwner()&&editable()?'<button class="link" id="game-picker">选游戏</button>':''}</div>
   <div class="section-head"><h3>参与玩家 <small>${room.seats.length}</small></h3>${room.seats.includes(playerId)&&editable()?`<button class="link" data-seat="${playerId}" data-seated="false">这局先旁观</button>`:''}</div>
   <div class="seats">${Array.from({length:Math.max(room.seats.length,g?.minimum || 1)},(_,i)=>seatView(room.seats[i],i)).join('')}</div>
-  ${observers.length?`<div class="section-head"><h3>旁观与候场 <small>${observers.length}</small></h3></div><div class="spectators">${observers.map(pid=>`<button class="spectator secondary" data-member="${esc(pid)}">${esc(room.members[pid].avatar)} ${esc(room.members[pid].name)}${room.pending_member_ids?.includes(pid)?' · 候场':''}</button>`).join('')}</div>`:''}
+  ${observers.length?`<div class="section-head"><h3>旁观与候场 <small>${observers.length}</small></h3></div><div class="spectators">${observers.map(pid=>`<button class="spectator secondary" data-member="${esc(pid)}">${GameAvatars.html(room.members[pid].avatar)} ${esc(room.members[pid].name)}${room.pending_member_ids?.includes(pid)?' · 候场':''}</button>`).join('')}</div>`:''}
   </section><div class="room-tools"><button class="secondary" id="open-settings" ${!g?'disabled':''}>本局设置</button><button class="secondary" id="open-rules">玩法说明</button></div>
-  <p class="room-hint muted">朋友打开大厅，找到“${esc(roomTitle(room))}”就能加入。</p>${actionView()}`;
+  <p class="room-hint muted">朋友打开大厅，找到“${esc(roomTitle(room))}”就能加入。<br>所有人离线 15 分钟后，房间自动解散。</p>${actionView()}`;
 }
 function sheetView() {
   if(!sheet && !pendingKick)return '';
@@ -184,17 +185,17 @@ function sheetView() {
   else if(['create','join','profile'].includes(sheet)){
     title=sheet==='create'?'开一桌，等朋友':sheet==='join'?`加入${roomTitle(targetRoom)}`:'我的资料';
     content=`<form id="profile-form" class="profile-form">${sheet==='join'&&targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}
-    <label>你的昵称<input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></label><div class="avatars">${avatars.map(a=>`<button type="button" class="avatar-pick ${draftAvatar===a?'active':''}" data-avatar="${a}" aria-label="头像 ${a}" aria-pressed="${draftAvatar===a}">${a}</button>`).join('')}</div>
+    <label>你的昵称<input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></label><div class="avatars">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" data-avatar="${a}" aria-label="头像 ${avatars.indexOf(a)+1}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
     ${sheet==='create'?`<label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label>`:''}
     ${sheet==='create'||sheet==='join'&&targetRoom.has_password?`<label>${sheet==='create'?'房间密码（选填）':'房间密码'}<input id="password" type="password" autocomplete="${sheet==='create'?'new-password':'off'}" maxlength="20" value="${esc(password)}" placeholder="${sheet==='create'?'留空，朋友可直接加入':'请输入房主设置的密码'}" ${sheet==='join'?'required':''}></label>`:''}
     <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button>${busy?'正在保存…':sheet==='create'?'创建房间':sheet==='join'?'加入房间':'保存资料'}</button></form>`;
   }else if(sheet==='settings'){title='本局设置';content=settingsView();}
-  else if(sheet==='games'){title='今晚玩什么？';content=`<div class="stack">${games.map(g=>`<button class="secondary" data-game="${g.id}">${g.icon} ${esc(g.title)} · ${g.minimum}–${g.maximum} 人</button>`).join('')}</div>`;}
+  else if(sheet==='games'){title='今晚玩什么？';content=`<div class="stack">${games.map(g=>`<button class="secondary game-choice" data-game="${g.id}">${gameIcon(g)}<span>${esc(g.title)}<small>${g.minimum}–${g.maximum} 人</small></span></button>`).join('')}</div>`;}
   else if(sheet==='password'){title='房间密码';content=`<form id="password-form" class="stack"><p class="muted">${room.has_password?'已设置密码。留空保存可移除密码。':'当前无需密码即可加入。'}已有成员重连不受影响。</p><label>新密码<input type="password" id="password" autocomplete="new-password" maxlength="20" value="${esc(password)}" placeholder="留空则无需密码"></label><button>保存密码</button></form>`;}
   else if(sheet==='rules'){title='第一次玩？';content=`<ol class="rules-list"><li>朋友打开大厅，找到房主的名字加入。</li><li>入座并准备，全员准备后 3 秒开局。</li><li>按屏幕提示操作，讨论时可以放下手机。</li><li>结束后留在同一房间再来一局。</li></ol><p>${esc(info(room.game_id)?.description || '')}</p><p class="muted">${room.game_id==='holdem'?'这是线下筹码管理，实体牌由大家在线下发放；下一手与重开整场筹码局不同。':room.game_id==='bluff'?'想想选题，大家确认后老实人限时看答案；线下讨论后，想想先质疑，再指认。':'夜晚查看身份并完成行动，白天线下讨论，发起投票后选择目标。'}</p>`;}
   else if(sheet==='member'){
     const p=room.members[targetRoom];if(!p)return '';
-    title=`${p.avatar} ${p.name}`;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
+    title=p.name;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
     if(isOwner()&&editable()&&targetRoom!==playerId)content+=`<button class="secondary" data-seat="${esc(targetRoom)}" data-seated="${!room.seats.includes(targetRoom)}">${room.seats.includes(targetRoom)?'移至旁观':'安排入座'}</button><button class="secondary" data-transfer="${esc(targetRoom)}" ${!p.connected?'disabled':''}>转交房主</button><button class="danger" data-kick="${esc(targetRoom)}">移出房间</button>`;
   }else{title='房间';content=`<p class="muted">${room.members[room.owner_id].connected?'房主：'+esc(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
   return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${esc(title)}</h2><button class="secondary" id="close-sheet" aria-label="关闭">✕</button></div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
@@ -219,7 +220,7 @@ function render() {
   const dialog=root.querySelector('[role=dialog]'),scroll=dialog?.scrollTop || 0;
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand"><span class="brand-mark">⚄</span>一起玩</button><button class="profile-chip secondary" id="my-profile">${esc(avatar)} ${esc(name || '设置我的资料')}</button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${esc(name || '设置我的资料')}</span></button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);

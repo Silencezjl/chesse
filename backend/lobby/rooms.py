@@ -132,6 +132,7 @@ class LobbyRoom:
         d.setdefault('password_hash', None)
         d.setdefault('created_at', 0)
         d.setdefault('pending_member_ids', [])
+        d.setdefault('empty_since', None)
         d.setdefault('owner_offline_since', None)
         d.setdefault('start_error', '')
         for member in d['members'].values():

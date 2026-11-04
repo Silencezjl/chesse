@@ -27,8 +27,8 @@ export default function App() {
     <div className={`min-h-screen flex flex-col `}>
       {window.parent === window && <header className="p-4 text-center border-b border-white/10">
         <h1 className="text-2xl md:text-3xl font-bold">
-          <span className="text-cheese-400">🧀</span> 奶酪大盗{' '}
-          <span className="text-cheese-400">🐭</span>
+          <img src="/assets/game-cheese-indigo-v1.webp" alt="" width="48" height="48" className="inline-block align-middle" /> 奶酪大盗{' '}
+
         </h1>
         <div className="flex items-center justify-center gap-2 mt-1">
           <span className={`w-2 h-2 rounded-full ${ws.connected ? 'bg-green-400' : 'bg-red-400'}`} />

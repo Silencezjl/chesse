@@ -1,3 +1,4 @@
+import Avatar from './Avatar';
 import React, { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Room, Player, HandState } from '../types';
@@ -226,7 +227,7 @@ function PlayerRow({ player: p, room, playerId, hand }: PlayerRowProps) {
       {/* Top row: Emoji + Name + Role */}
       <div className="flex items-center gap-1.5 min-w-0">
         <div className="relative flex-shrink-0">
-          <span className="text-xl">{p.emoji}</span>
+          <span className="text-xl"><Avatar value={p.emoji} /></span>
           <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-slate-800 ${p.is_connected ? 'bg-green-400' : 'bg-red-500'}`} />
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-center">

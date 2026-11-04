@@ -1,3 +1,4 @@
+import Avatar from '../components/Avatar';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
@@ -6,20 +7,7 @@ import { RoomListItem } from '../types';
 import CreateRoomForm from '../components/CreateRoomForm';
 import JoinRoomList from '../components/JoinRoomList';
 
-const EMOJIS = [
-  // 鸭子系列
-  '🦆','🐥','🐤','🐣',
-  // 拟人脸
-  '😀','😎','🤠','🥸','🤩','🥳','😏','😤','🤑','😈',
-  '👿','🤡','🥷','🧙','🧛','🧟','🧜','🧝','🤖','👽',
-  '👻','💀','🎃','�','🦹','🧑‍🚀','🧑‍🍳','🧑‍🎤','🧑‍🎨','🕵️',
-  // 动物拟人
-  '�🦊','🐱','🐶','🐼','🦁','🐯','🐸','🐵','🦄','🐲',
-  '🦅','🐧','🐨','🐰','🐷','🦋','🐺','🦝','🦔','🐻',
-  '🐮','🐭','🐹','🐗','🦊','🦉','🦚','🦜','🐦','🦩',
-  // 符号/物品
-  '🌟','🔥','💎','🎯','🎲','👑','🃏','♠️','♥️','♦️','♣️',
-];
+const EMOJIS = window.GameAvatars?.ids || ['avatar-01'];
 
 type Tab = 'create' | 'join';
 
@@ -154,7 +142,7 @@ export default function HomePage() {
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
               className="text-4xl w-14 h-14 flex items-center justify-center bg-slate-700 rounded-full hover:bg-slate-600 transition"
             >
-              {emoji}
+              <Avatar value={emoji} size={40} />
             </button>
             <input
               className="flex-1 bg-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
@@ -172,14 +160,14 @@ export default function HomePage() {
             </button>
           </div>
           {showEmojiPicker && (
-            <div className="grid grid-cols-10 gap-1 mt-3 p-2 bg-slate-700 rounded-lg">
+            <div className="grid grid-cols-4 gap-1 mt-3 p-2 bg-slate-700 rounded-lg">
               {EMOJIS.map(e => (
                 <button
                   key={e}
                   onClick={() => { setEmoji(e); setShowEmojiPicker(false); }}
                   className={`text-xl p-1 rounded hover:bg-slate-600 ${emoji === e ? 'bg-blue-600' : ''}`}
                 >
-                  {e}
+                  <Avatar value={e} />
                 </button>
               ))}
             </div>

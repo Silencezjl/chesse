@@ -8,6 +8,7 @@ from games.holdem.ws_manager import manager as holdem_connections
 
 
 class GameRuntime(Protocol):
+    def has_connections(self, room_id: str) -> bool: ...
     async def snapshot(self, room_id: str) -> dict | None: ...
     async def install(self, data: dict) -> None: ...
     async def detach(self, data: dict) -> None: ...
@@ -17,6 +18,10 @@ class GameRuntime(Protocol):
 class CheeseRuntime:
     def __init__(self, manager, store, sockets, player_map):
         self.manager, self.store, self.sockets, self.player_map = manager, store, sockets, player_map
+
+    def has_connections(self, room_id):
+        game = self.manager.get_room(room_id)
+        return bool(game and any(pid in self.sockets for pid in (*game.players, *game.spectators)))
 
     async def snapshot(self, room_id):
         game = self.manager.get_room(room_id)
@@ -58,6 +63,9 @@ class CheeseRuntime:
 
 
 class HoldemRuntime:
+    def has_connections(self, room_id):
+        return bool(holdem_connections.rooms.get(room_id))
+
     async def snapshot(self, room_id):
         game = await get_holdem(room_id)
         return game.model_dump(mode='json') if game else None

@@ -1,0 +1,8 @@
+Thumbs avatar artwork by DiceBear
+Source: https://www.dicebear.com/styles/thumbs/
+License: Creative Commons CC0 1.0 Universal
+License text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+These eight SVG files were fetched with fixed seeds and a site-matched color
+palette. Exact source URLs are recorded in sources.json. They are served locally;
+no user identifiers or profile data are sent to DiceBear at runtime.

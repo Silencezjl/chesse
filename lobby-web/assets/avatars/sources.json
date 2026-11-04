@@ -1,0 +1,49 @@
+{
+  "style": "Thumbs",
+  "author": "DiceBear",
+  "license": "CC0 1.0",
+  "source": "https://www.dicebear.com/styles/thumbs/",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "assets": [
+    {
+      "id": "avatar-01",
+      "seed": "Milo",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Milo&backgroundColor=eeeafe&shapeColor=8064e2"
+    },
+    {
+      "id": "avatar-02",
+      "seed": "Luna",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Luna&backgroundColor=fff0de&shapeColor=e8ad53"
+    },
+    {
+      "id": "avatar-03",
+      "seed": "Finn",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Finn&backgroundColor=ffe9e6&shapeColor=dc7b80"
+    },
+    {
+      "id": "avatar-04",
+      "seed": "Ada",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Ada&backgroundColor=e8edff&shapeColor=6d8de0"
+    },
+    {
+      "id": "avatar-05",
+      "seed": "Nori",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Nori&backgroundColor=f2e8ff&shapeColor=a575d4"
+    },
+    {
+      "id": "avatar-06",
+      "seed": "Kiki",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Kiki&backgroundColor=ffeddf&shapeColor=d88b61"
+    },
+    {
+      "id": "avatar-07",
+      "seed": "Taro",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Taro&backgroundColor=e9e5fb&shapeColor=7261b1"
+    },
+    {
+      "id": "avatar-08",
+      "seed": "Yuki",
+      "url": "https://api.dicebear.com/10.x/thumbs/svg?seed=Yuki&backgroundColor=ffe9f1&shapeColor=d37a9e"
+    }
+  ]
+}

@@ -28,6 +28,10 @@ owner_timers = {}
 ROOMS_KEY = 'lobby:rooms:v1'
 PREFIX = 'lobby:room:v1:'
 PLAYER_PREFIX = 'lobby:player:v1:'
+EMPTY_ROOM_TTL = 15 * 60
+CLEANUP_INTERVAL = 30
+HEARTBEAT_TIMEOUT = 75
+cleanup_task = None
 
 
 class Profile(BaseModel):
@@ -86,7 +90,19 @@ async def load(room_id):
     return LobbyRoom.restore(json.loads(raw))
 
 
+def track_empty(room, now=None):
+    runtime = runtimes.get(room.data['game_id'])
+    game_online = runtime and getattr(runtime, 'has_connections', lambda _: False)(room.data['id']) is True
+    online = any(m['connected'] for m in room.data['members'].values()) or game_online
+    if online:
+        room.data['empty_since'] = None
+    elif room.data['empty_since'] is None:
+        room.data['empty_since'] = time.time() if now is None else now
+    return bool(online)
+
+
 async def save(room, *, add_player=None, remove_player=None):
+    track_empty(room)
     data = room.snapshot()
     pipe = db().pipeline()
     pipe.set(PREFIX + data['id'], json.dumps(data, ensure_ascii=False))
@@ -558,7 +574,11 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
             await save(room)
             await publish(room)
         while True:
-            message = await ws.receive_json()
+            try:
+                message = await asyncio.wait_for(ws.receive_json(), timeout=HEARTBEAT_TIMEOUT)
+            except asyncio.TimeoutError:
+                await ws.close(code=4000)
+                break
             if connections[room_id].get(player_id) is not ws:
                 break
             if message.get('type') == 'ping':
@@ -586,3 +606,73 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
                     await publish(room)
                 except HTTPException:
                     pass
+
+
+async def cleanup_empty_rooms(now=None):
+    """Recheck under membership + room locks; delete only this expired room's keys."""
+    now = time.time() if now is None else now
+    for rid in list(await db().smembers(ROOMS_KEY)):
+        try:
+            async with locks['__membership__']:
+                async with locks[rid]:
+                    try:
+                        room = await load(rid)
+                    except HTTPException as exc:
+                        if exc.status_code != 404:
+                            raise
+                        pipe = db().pipeline()
+                        pipe.srem(ROOMS_KEY, rid)
+                        await pipe.execute()
+                        continue
+                    before = room.data['empty_since']
+                    online = track_empty(room, now)
+                    if online or now - room.data['empty_since'] < EMPTY_ROOM_TTL:
+                        if before != room.data['empty_since']:
+                            await save(room)
+                        continue
+                    # No live lobby or game connections remain. A reconnect takes
+                    # the same room lock and resets the idle timestamp before us.
+                    transitions.add(rid)
+                    try:
+                        await detach_game(room.data)
+                        pipe = db().pipeline()
+                        for pid in room.data['members']:
+                            if await db().get(PLAYER_PREFIX + pid) == rid:
+                                pipe.delete(PLAYER_PREFIX + pid)
+                        pipe.delete(PREFIX + rid)
+                        pipe.srem(ROOMS_KEY, rid)
+                        await pipe.execute()
+                        cancel_task(countdowns, rid)
+                        cancel_task(owner_timers, rid)
+                        connections.pop(rid, None)
+                        logger.info('Dissolved offline lobby room %s after %s seconds', rid, EMPTY_ROOM_TTL)
+                    finally:
+                        transitions.discard(rid)
+        except Exception:
+            logger.exception('Failed to clean up offline lobby room %s', rid)
+
+
+async def _cleanup_loop():
+    while True:
+        try:
+            await cleanup_empty_rooms()
+        except Exception:
+            logger.exception('Lobby offline-room cleanup failed; retrying')
+        await asyncio.sleep(CLEANUP_INTERVAL)
+
+
+def start_cleanup():
+    global cleanup_task
+    if cleanup_task is None or cleanup_task.done():
+        cleanup_task = asyncio.create_task(_cleanup_loop())
+
+
+async def stop_cleanup():
+    global cleanup_task
+    if cleanup_task is not None:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+        cleanup_task = None
