@@ -7,6 +7,7 @@ from typing import Protocol
 from game import Room as CheeseRoom
 from models import Player as CheesePlayer, GamePhase
 from games.holdem.models import Room as HoldemRoom, Player as HoldemPlayer, RoomStatus
+from games.bluff import engine as bluff_engine
 
 
 class GameAdapter(Protocol):
@@ -78,4 +79,15 @@ class HoldemAdapter:
         return snapshot.get("status") == RoomStatus.FINISHED
 
 
-GAMES: dict[str, GameAdapter] = {game.id: game for game in (CheeseAdapter(), HoldemAdapter())}
+class BluffAdapter:
+    id = 'bluff'
+    title = '瞎掰王'
+
+    def create(self, room: dict, options: dict) -> dict:
+        return bluff_engine.create(room, options)
+
+    def can_switch(self, snapshot: dict) -> bool:
+        return snapshot.get('phase') == 'finished'
+
+
+GAMES: dict[str, GameAdapter] = {game.id: game for game in (CheeseAdapter(), HoldemAdapter(), BluffAdapter())}

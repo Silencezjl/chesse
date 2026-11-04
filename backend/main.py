@@ -747,6 +747,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
 
 from lobby.api import router as lobby_router
 app.include_router(lobby_router)
+from games.bluff.service import router as bluff_router
+app.include_router(bluff_router)
 
 
 @app.websocket("/holdem-ws/{room_id}/{player_id}")

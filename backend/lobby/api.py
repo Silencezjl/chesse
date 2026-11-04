@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from lobby.games import GAMES
 from lobby.rooms import LobbyRoom, RoomError, new_id
 from lobby.runtime import CheeseRuntime, HoldemRuntime
+from games.bluff.service import BluffRuntime
 
 router = APIRouter(prefix="/lobby")
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class SelectGame(BaseModel):
 def configure(client, manager, store, sockets, player_map):
     global redis, runtimes
     redis = client
-    runtimes = {"cheese": CheeseRuntime(manager, store, sockets, player_map), "holdem": HoldemRuntime()}
+    runtimes = {"cheese": CheeseRuntime(manager, store, sockets, player_map), "holdem": HoldemRuntime(), "bluff": BluffRuntime()}
 
 
 async def reset_presence():
@@ -294,6 +295,9 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
         room = await load(room_id)
         room.data['members'][player_id]['connected'] = True
         await save(room)
+        runtime = runtimes.get(room.data['game_id'])
+        if runtime and hasattr(runtime, 'presence_changed'):
+            await runtime.presence_changed(room)
     await publish(room)
     try:
         while True:
@@ -312,6 +316,9 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
                     room = await load(room_id)
                     room.disconnect(player_id)
                     await save(room)
+                    runtime = runtimes.get(room.data['game_id'])
+                    if runtime and hasattr(runtime, 'presence_changed'):
+                        await runtime.presence_changed(room)
                     await publish(room)
                 except HTTPException:
                     pass
