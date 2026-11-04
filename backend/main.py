@@ -150,6 +150,10 @@ async def send_room_state(room: Room):
         await asyncio.gather(*tasks, return_exceptions=True)
     # Fire-and-forget Redis save (non-blocking)
     save_room_to_redis(room)
+    if room.phase == GamePhase.RESULT:
+        from lobby import api as lobby_api
+        if lobby_api.redis is not None:
+            asyncio.create_task(lobby_api.game_changed(room.id))
 
 
 async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
@@ -664,11 +668,14 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
     except Exception:
         await websocket.close(code=4404)
         return
-    if public_room.data['game_id'] != 'cheese' or player_id not in public_room.data['members']:
+    if (not public_room.data.get('session_id') or public_room.data['game_id'] != 'cheese') or player_id not in public_room.data['members']:
         await websocket.close(code=4403)
         return
     await websocket.accept()
+    previous = connections.get(player_id)
     connections[player_id] = websocket
+    if previous and previous is not websocket:
+        await previous.close(code=4001)
 
     # Check for reconnection
     room_id = player_rooms.get(player_id)

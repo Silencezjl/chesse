@@ -18,7 +18,7 @@ from .game_engine import (
     start_hand, process_action, get_seated_players,
     can_rebuy, do_rebuy, can_cashout, do_cashout, get_active_players,
     propose_settlement, confirm_settlement, reject_settlement,
-    end_game,
+    end_game, get_final_standings,
 )
 from .ws_manager import manager
 
@@ -101,7 +101,10 @@ def random_name() -> str:
 def room_to_broadcast(room: Room) -> dict:
     """Convert room to a dict suitable for broadcasting to all clients."""
     data = json.loads(room.model_dump_json())
-    return {"type": "room_state", "room": data}
+    message = {"type": "room_state", "room": data}
+    if room.status == RoomStatus.FINISHED:
+        message['standings'] = get_final_standings(room)
+    return message
 
 
 # ─── REST Endpoints ───
@@ -316,6 +319,9 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
                     resp = {"type": "error", "message": f"Unknown message type: {msg_type}"}
 
                 await save_room(room)
+                if room.status == RoomStatus.FINISHED:
+                    from lobby import api as lobby_api
+                    asyncio.create_task(lobby_api.game_changed(room_id))
 
                 if resp.get("type") == "error":
                     await manager.send_to_player(room_id, player_id, resp)

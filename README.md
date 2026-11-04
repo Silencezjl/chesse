@@ -29,12 +29,24 @@ PYTHON_IMAGE=python:3.12-slim-bookworm docker compose -p chesse-integration up -
 
 ## 游戏大厅
 
-- 使用设备上的匿名昵称、头像和身份创建或加入公共房间。房间最多 12 人，房主可选择游戏及本局设置。
-- 奶酪大盗由房主选择 5–8 名在线玩家参与，其他房间成员观战；所有参与者准备后开始。
-- 瞎掰王由房主选择 3–9 名在线玩家参与，其余成员观战；详见下方规则。
-- Holdem 支持 12 个座位，并由房主结束筹码局。切离后再次进入时按新设置重新发筹码。
-- 游戏进行时不能切换游戏或离开公共房间。奶酪大盗结算、Holdem 筹码局或瞎掰王结束后可回到房间切换；游戏进行时新玩家暂不能加入。
-- 同一房间实时同步成员和游戏选择，刷新或服务重启后可用原设备重连。首版设备身份不提供账户认证或跨设备身份同步，请勿将房间号及设备 ID 当作强身份验证。
+首页先选游戏开房，也可先建空房，再邀请朋友决定玩什么。通过六位房间号、邀请链接或本地生成的二维码加入；HTTP 环境无法使用剪贴板时提供手动复制文本。匿名资料保存在当前设备，无需注册。
+
+- 公共房间最多 12 人，默认按加入顺序入座，超出游戏上限的成员观战。玩家可选择参与或观战，房主可调整参与名单。
+- 奶酪大盗支持 5–8 人、瞎掰王支持 3–9 人、Holdem 支持 2–12 人。只有入座玩家需要准备。
+- 全员在线且准备后，由服务端执行 3 秒倒计时并自动开局。取消准备、参与者离线会取消倒计时；设置或参与名单变化会让所有人重新准备。新观众不影响倒计时。
+- 初次进入游戏不需要再次准备。Holdem 后续每手的准备、补码流程和瞎掰王每轮选题后的查看确认仍在游戏内进行。
+- 游戏进行中禁止新成员加入和成员离开，已有成员可刷新重连。结算后房主点击“再来一局 / 换游戏”返回等待室，保留成员和座位并清空准备。结束 Holdem 筹码局后重开会重新发筹码。
+- 房主可在等待室转交房主或移出成员；被移出者本房间内不能重新加入。房主离线 60 秒后转交给最早加入的在线成员，进行中的对局延后到结束再处理。
+- 同设备多标签页以最新连接为准，旧标签页暂停重连。后端重启保留已有对局，取消尚未完成的开局倒计时并清空准备。
+- 首版设备身份不提供账户认证或跨设备身份同步，请勿将房间号及设备 ID 当作强身份验证。大厅不公开枚举房间号和成员资料。
+
+### 公共接口与兼容
+
+`GET /lobby/games` 提供人数、入口和设置描述；`GET /lobby/rooms/{id}/preview` 提供邀请预览，不返回成员身份。房间状态包含 `stage`、`seats`、成员 `ready`、`revision` 和服务端倒计时截止时间。状态通过房间 WebSocket 推送，客户端每 5 秒请求刷新作为对局阶段同步补偿。
+
+`POST /lobby/rooms/{id}/game` 只保存配置，不再直接创建游戏。`/seat` 设置入座状态，`/ready` 使用显式布尔值及配置版本，`/return` 由房主在结算后返回等待室，`/manage?action=transfer|kick` 管理成员。全部准备后由服务端创建唯一会话，客户端无法跳过准备直接开局。
+
+旧房间字段读取时补齐，保留已有对局及 Redis 命名空间。所有 API 和等待室前端需一起发布；旧版大厅脚本不兼容新版准备流程。入口 JS/CSS 使用版本参数及重新验证缓存。Redis 和后端继续使用单 worker，禁止删除已有卷。
 
 ## 开发与验证
 
@@ -59,7 +71,7 @@ LOBBY_URL=http://localhost:8088 python scripts/smoke_lobby.py
 4. **白天和投票**：玩家讨论后，超过半数玩家发起投票，所有人各投一票。共犯不能投给自己认为的大盗。
 5. **胜负**：得票最多的是大盗时瞌睡鼠获胜；呆呆鸟被投出时呆呆鸟获胜；其他情况大盗阵营获胜。票数相同时按系统统计顺序选出第一名。
 
-夜晚行动和投票需要所有玩家完成；玩家断线后可重新连接继续。全员断线的房间保留 15 分钟。
+夜晚行动和投票需要所有玩家完成；玩家断线后可重新连接继续。奶酪对局全员断线 15 分钟后会过期，公共房间会提示房主重新组局。
 
 ## 瞎掰王
 
@@ -68,3 +80,23 @@ LOBBY_URL=http://localhost:8088 python scripts/smoke_lobby.py
 参与者断线时暂停流程与计时；重连后继续。服务重启后会从 Redis 恢复，意外重启会使用保守的计时检查点，可能损失少量查看时间（正常调度下约 0.5 秒以内）。身份和答案按设备单独发送，观众在揭晓前不可见；设备匿名 ID 并非强身份认证。60 道原创题目及对应参考来源位于 `backend/games/bluff/questions.py`，每题来源也显示在揭晓结果中。已抽过或换掉的题本局不重复，单个难度用尽时须选择其他难度。
 
 大厅与游戏通过 `/bluff-ws/` 连接，状态保存在 `lobby:game:bluff:room:` 命名空间。规则、持久化与连接分别位于 `backend/games/bluff/engine.py` 和 `service.py`，界面位于 `bluff-web/`。可在隔离测试实例运行 `LOBBY_URL=http://localhost:18089 python scripts/smoke_bluff.py`；脚本会创建测试房间。
+
+## 新流程验证与回退
+
+```bash
+npm ci && npm test
+(cd backend && python -m unittest discover -s tests -v)
+LOBBY_URL=http://localhost:18088 python scripts/smoke_lobby.py
+LOBBY_URL=http://localhost:18088 python scripts/smoke_bluff.py
+```
+
+以上脚本只用于 dify 隔离测试实例，成功后移除自身测试房间。重启验证只允许额外的 `chesse-bluff-test` 项目（18089）：
+
+```bash
+LOBBY_URL=http://localhost:18089 BLUFF_RESTART_CONTAINER=chesse-bluff-test-backend-1 python scripts/smoke_bluff_restart.py
+LOBBY_URL=http://localhost:18089 BLUFF_RESTART_CONTAINER=chesse-bluff-test-backend-1 python scripts/smoke_waiting_restart.py
+```
+
+后一个脚本包含真实 60 秒房主转交、倒计时中重启取消和 Holdem 进行中重启恢复，会重启该专用测试后端，不应对正式环境运行。
+
+本轮实施前的本地源码快照保存在本次 Codex 工作目录 `work/chesse-backup/before-platform.tar.gz`。dify 源码备份位于 `/home/zhangjialin/chesse-backups/before-waiting-room.tar.gz`，旧镜像标记为 `chesse-integration-backend:before-waiting-room` 和 `chesse-integration-frontend:before-waiting-room`。回退需停止测试实例、恢复源码并使用旧镜像重新创建前后端；不删除 Redis 卷。新流程产生的等待室数据应继续使用新版管理，回退前先结束测试对局。

@@ -28,7 +28,7 @@ class RoomStateMixin:
         players_data = {}
         for pid, p in self.players.items():
             is_self = (pid == for_player_id)
-            reveal = (self.phase == GamePhase.RESULT) or is_spectator
+            reveal = (self.phase == GamePhase.RESULT)
             players_data[pid] = p.to_dict(reveal=reveal, is_self=is_self)
             if is_self and not reveal and p.is_accomplice and self.dodobird_id and not self.dodobird_accomplice_id:
                 players_data[pid]["role"] = Role.MOUSE
@@ -60,11 +60,6 @@ class RoomStateMixin:
 
         if is_spectator:
             data["is_spectator"] = True
-            # Spectators see result-like info during active game
-            if self.phase in (GamePhase.NIGHT, GamePhase.DAY, GamePhase.VOTING):
-                data["vote_results"] = self.vote_results
-                data["thief_id"] = self.thief_id
-                data["accomplice_id"] = self.accomplice_id
             if self.phase == GamePhase.RESULT:
                 data["vote_results"] = self.vote_results
                 data["voted_player_id"] = self.voted_player_id

@@ -30,10 +30,21 @@ class CheeseRuntime:
         self.manager.rooms[data['id']] = game
         await self.store.save_room(game.serialize())
 
+    async def begin(self, data):
+        game = self.manager.get_room(data['id'])
+        for player in game.players.values():
+            player.ready = True
+        game.start_game()
+        await self.store.save_room(game.serialize())
+
     async def detach(self, data):
         room_id = data['id']
-        self.manager.rooms.pop(room_id, None)
-        for pid in data['members']:
+        game = self.manager.rooms.pop(room_id, None)
+        players = set(data['members'])
+        if game:
+            players.update(game.players)
+            players.update(game.spectators)
+        for pid in players:
             self.player_map.pop(pid, None)
             socket = self.sockets.pop(pid, None)
             if socket:
@@ -53,6 +64,18 @@ class HoldemRuntime:
 
     async def install(self, data):
         await save_holdem(HoldemRoom.model_validate(data['game_state']))
+
+    async def begin(self, data):
+        from games.holdem.game_engine import start_hand
+        from games.holdem.models import PlayerStatus
+        game = await get_holdem(data['id'])
+        for index, pid in enumerate(data['seats']):
+            game.seats[index] = pid
+            game.players[pid].seat = index
+            game.players[pid].ready = True
+            game.players[pid].status = PlayerStatus.ACTIVE
+        game = start_hand(game)
+        await save_holdem(game)
 
     async def detach(self, data):
         room_id = data['id']

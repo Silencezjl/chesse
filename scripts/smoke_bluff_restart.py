@@ -5,6 +5,7 @@ import subprocess
 import uuid
 
 from smoke_bluff import Client, connect, request
+from waiting_client import configure_and_ready
 
 
 async def main():
@@ -20,7 +21,7 @@ async def main():
         for pid in ids:
             lobby[pid] = await connect(f'/lobby/rooms/{room_id}/ws/{pid}')
             await lobby[pid].wait('room_state')
-        await request(f'/lobby/rooms/{room_id}/game', {'player_id': ids[0], 'game_id': 'bluff', 'options': {'participants': ids, 'circles': 1}})
+        await configure_and_ready(request, room_id, ids[0], 'bluff', ids, {'circles':1})
         for pid in ids:
             game[pid] = await connect(f'/bluff-ws/{room_id}/{pid}')
         initial = {pid: await game[pid].wait('state') for pid in ids}
@@ -64,6 +65,8 @@ async def main():
             assert 'answer' not in state and state['my_role'] == initial[pid]['my_role']
         await game[ids[0]].send('terminate')
         await game[ids[0]].wait('state', lambda s: s['phase'] == 'finished')
+        for pid in ids[1:]+ids[:1]:
+            await request(f'/lobby/rooms/{room_id}/leave', {'player_id':pid})
         print('PASS: Redis-backed restart restores room, roles and paused countdown without leaking answers')
     finally:
         for client in list(game.values()) + list(lobby.values()):

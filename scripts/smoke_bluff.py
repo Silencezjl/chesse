@@ -8,6 +8,7 @@ import urllib.request
 import uuid
 
 import websockets
+from waiting_client import configure_and_ready
 
 BASE = os.environ.get('LOBBY_URL', 'http://127.0.0.1:8088').rstrip('/')
 WS = BASE.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
@@ -69,8 +70,7 @@ async def main():
         for pid in ids:
             lobby[pid] = await connect(f'/lobby/rooms/{room_id}/ws/{pid}')
             await lobby[pid].wait('room_state')
-        await request(f'/lobby/rooms/{room_id}/game', {'player_id':ids[0], 'game_id':'bluff',
-                                                       'options':{'participants':ids[:5], 'circles':1}})
+        await configure_and_ready(request, room_id, ids[0], 'bluff', ids[:5], {'circles':1})
         for pid in ids:
             game[pid] = await connect(f'/bluff-ws/{room_id}/{pid}')
         views = {pid: await game[pid].wait('state') for pid in ids}
@@ -119,12 +119,21 @@ async def main():
         for pid in ids:
             v = await game[pid].wait('state', lambda s:s['phase']=='finished')
             assert v['terminated'] and len(v['history']) == 1
-        await request(f'/lobby/rooms/{room_id}/game', {'player_id':ids[0], 'game_id':'holdem', 'options':{}})
+        await configure_and_ready(request, room_id, ids[0], 'holdem', ids[:2])
         h = await connect(f'/holdem-ws/{room_id}/{ids[0]}')
-        await h.wait('room_state')
+        first = await h.wait('room_state')
+        h2 = await connect(f'/holdem-ws/{room_id}/{ids[1]}')
+        await h2.wait('room_state')
+        actor = h if first['room']['hand']['current_player_id'] == ids[0] else h2
+        await actor.ws.send(json.dumps({'type':'action', 'action':'fold'}))
+        await h.wait('room_state', lambda m:m.get('room',{}).get('status')=='waiting')
+        await h2.close()
         await h.ws.send(json.dumps({'type':'end_game'}))
         await h.wait('room_state',lambda m:m.get('room',{}).get('status')=='finished')
-        await request(f'/lobby/rooms/{room_id}/game', {'player_id':ids[0], 'game_id':'cheese', 'options':{'participants':ids[:5]}})
+        await request(f'/lobby/rooms/{room_id}/return', {'player_id':ids[0]})
+        await request(f'/lobby/rooms/{room_id}/game', {'player_id':ids[0], 'game_id':'cheese', 'options':{}})
+        for pid in ids[1:]+ids[:1]:
+            await request(f'/lobby/rooms/{room_id}/leave', {'player_id':pid})
         print('PASS: 10 members, private cards, pause/resume, 9-second timer, scoring, termination, Holdem and cheese switching')
         await h.close()
     finally:

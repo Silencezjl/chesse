@@ -25,7 +25,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen flex flex-col ${ws.screenShake ? 'animate-screen-shake' : ''}`}>
-      <header className="p-4 text-center border-b border-white/10">
+      {window.parent === window && <header className="p-4 text-center border-b border-white/10">
         <h1 className="text-2xl md:text-3xl font-bold">
           <span className="text-cheese-400">🧀</span> 奶酪大盗{' '}
           <span className="text-cheese-400">🐭</span>
@@ -41,7 +41,7 @@ export default function App() {
             )}
           </span>
         </div>
-      </header>
+      </header>}
 
       <main className="flex-1 flex items-start justify-center p-4">
         {roomState ? (

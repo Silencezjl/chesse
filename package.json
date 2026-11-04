@@ -1,0 +1,6 @@
+{
+  "name": "together-lobby-tests",
+  "private": true,
+  "scripts": { "test": "node --test tests/lobby-ui.test.cjs" },
+  "devDependencies": { "jsdom": "^26.1.0" }
+}

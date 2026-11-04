@@ -10,6 +10,7 @@ import urllib.request
 import uuid
 
 import websockets
+from waiting_client import configure_and_ready
 
 BASE = os.environ.get('LOBBY_URL', 'http://127.0.0.1:8088').rstrip('/')
 WS_BASE = BASE.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
@@ -81,16 +82,15 @@ async def main():
         for client in lobby_clients:
             await client.wait('room_state')
         await asyncio.to_thread(denied, f'/lobby/rooms/{room}/game', {'player_id': ids[1], 'game_id': 'cheese', 'options': {'participants': ids}}, 403)
-        await req(f'/lobby/rooms/{room}/game', {'player_id': ids[0], 'game_id': 'cheese',
-                                              'options': {'participants': ids, 'outsider_dodobird': True}})
+        await configure_and_ready(req, room, ids[0], 'cheese', ids, {'outsider_dodobird':True})
         await asyncio.to_thread(denied, f'/lobby/rooms/{room}/game', {'player_id': ids[0], 'game_id': 'holdem', 'options': {}}, 409)
         for pid in ids:
             games.append(Client(await websockets.connect(f'{WS_BASE}/ws/{pid}')))
         for client in games:
             await client.wait('connected')
         for client in games:
-            await client.send('ready', {'ready': True})
-        infos = [(await client.wait('game_start'))['data'] for client in games]
+            await client.send('get_game_info')
+        infos = [(await client.wait('room_state', lambda m: bool(m['data'].get('my_info'))))['data']['my_info'] for client in games]
         thief = next(i for i,x in enumerate(infos) if x['role'] == 'thief')
         bird = next(i for i,x in enumerate(infos) if x['role'] == 'dodobird')
         rest = [i for i in range(5) if i not in (thief, bird)]
@@ -116,26 +116,25 @@ async def main():
         result = (await games[0].wait('game_result'))['data']
         assert sum(result['vote_results'].values()) == 5
         assert (await req(f'/lobby/rooms/{room}?player_id={ids[0]}'))['can_switch']
-        await req(f'/lobby/rooms/{room}/game', {'player_id': ids[0], 'game_id': 'holdem', 'options': {'initial_chips': 1000}})
+        await configure_and_ready(req, room, ids[0], 'holdem', ids[:2], {'initial_chips':1000})
         for client in games:
             await client.close()
         games = []
         for pid in ids:
             games.append(Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{room}/{pid}')))
-        for client in games:
-            msg = await client.wait('room_state')
-            assert all(p['chips'] == 1000 for p in msg['room']['players'].values())
-        for i in range(2):
-            await games[i].ws.send(json.dumps({'type': 'sit', 'seat': i}))
-            await games[i].wait('room_state', lambda m: m['room']['players'][ids[i]]['seat'] == i)
-        for i in range(2):
-            await games[i].ws.send(json.dumps({'type': 'ready'}))
         msg = await games[0].wait('room_state', lambda m: m['room']['status'] == 'playing')
+        assert sum(p['chips'] + p['total_bet_this_hand'] for p in msg['room']['players'].values()) == 5000
         actor = ids.index(msg['room']['hand']['current_player_id'])
         await games[actor].ws.send(json.dumps({'type': 'action', 'action': 'fold'}))
         await games[0].wait('room_state', lambda m: m['room']['status'] == 'waiting')
         await games[0].ws.send(json.dumps({'type': 'end_game'}))
         await games[0].wait('room_state', lambda m: m['room']['status'] == 'finished')
+        recovered = Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{room}/{ids[0]}'))
+        restored = await recovered.wait('room_state')
+        assert restored['room']['status'] == 'finished' and len(restored['standings']) == 2
+        assert sum(p['net'] for p in restored['standings']) == 0
+        await games[0].close()
+        games[0] = recovered
         assert (await req(f'/lobby/rooms/{room}?player_id={ids[0]}'))['can_switch']
         print(f'PASS: {room}: public room → cheese → Holdem → fold → end game')
         for pid in ids[1:] + ids[:1]:

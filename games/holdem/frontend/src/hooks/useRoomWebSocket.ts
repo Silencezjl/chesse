@@ -49,6 +49,9 @@ export function useRoomWebSocket(roomId: string | null) {
           setLatency(Date.now() - data.timestamp);
         } else if (data.type === 'room_state') {
           setRoom(data.room);
+          if (data.room.status === 'finished' && data.standings) {
+            setStandings(data.standings as Standing[]);
+          }
         } else if (data.type === 'event') {
           if (data.event === 'game_ended' && data.standings) {
             setStandings(data.standings as Standing[]);

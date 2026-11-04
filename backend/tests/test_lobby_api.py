@@ -58,14 +58,12 @@ class PublicRoomApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.status_code, 403)
         self.assertEqual((await api.load(data['id'])).data['owner_id'], 'p0')
 
-    async def test_switch_install_failure_restores_public_state(self):
+    async def test_selecting_game_does_not_install_before_readiness(self):
         data = await api.create_room(self.profile)
         runtime = MagicMock()
-        runtime.install = AsyncMock(side_effect=RuntimeError('storage unavailable'))
-        runtime.detach = AsyncMock()
+        runtime.install = AsyncMock()
         api.runtimes['holdem'] = runtime
-        with self.assertRaises(RuntimeError):
-            await api.select_game(data['id'], api.SelectGame(player_id='p0', game_id='holdem'))
-        self.assertIsNone((await api.load(data['id'])).data['game_id'])
-        self.assertNotIn(data['id'], api.transitions)
-        runtime.detach.assert_awaited_once()
+        selected = await api.select_game(data['id'], api.SelectGame(player_id='p0', game_id='holdem'))
+        self.assertEqual(selected['stage'], 'waiting')
+        self.assertEqual(selected['game_id'], 'holdem')
+        runtime.install.assert_not_awaited()
