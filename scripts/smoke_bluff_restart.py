@@ -4,7 +4,7 @@ import os
 import subprocess
 import uuid
 
-from smoke_bluff import Client, connect, request
+from smoke_bluff import Client, connect, request, identity
 from waiting_client import configure_and_ready
 
 
@@ -12,7 +12,7 @@ async def main():
     container = os.environ.get('BLUFF_RESTART_CONTAINER', '')
     if container != 'chesse-bluff-test-backend-1':
         raise SystemExit('Set BLUFF_RESTART_CONTAINER=chesse-bluff-test-backend-1; use only the isolated test project')
-    ids = [f'bluff_restart_{uuid.uuid4().hex[:8]}_{i}' for i in range(3)]
+    ids = [identity() for _ in range(3)]
     room_id = (await request('/lobby/rooms', {'player_id': ids[0], 'name': 'R0', 'avatar': '🐭'}))['id']
     lobby, game = {}, {}
     try:

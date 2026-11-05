@@ -6,6 +6,8 @@ import subprocess
 import urllib.error
 import urllib.request
 import uuid
+from smoke_lobby import identity, openers, cookies
+import urllib.parse
 
 import websockets
 from waiting_client import configure_and_ready
@@ -17,7 +19,8 @@ WS = BASE.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
 def http(path, data=None):
     req = urllib.request.Request(BASE + path, data=None if data is None else json.dumps(data).encode(),
                                  headers={'Content-Type':'application/json'})
-    with urllib.request.urlopen(req, timeout=10) as res:
+    player = (data or {}).get('player_id') or urllib.parse.parse_qs(urllib.parse.urlsplit(path).query).get('player_id', [None])[0]
+    with openers.get(player, urllib.request.build_opener()).open(req, timeout=10) as res:
         return json.load(res)
 
 
@@ -56,11 +59,12 @@ class Client:
 
 
 async def connect(path):
-    return Client(await websockets.connect(WS + path))
+    player = path.rsplit('/', 1)[-1]
+    return Client(await websockets.connect(WS + path, extra_headers={'Cookie': cookies[player]}))
 
 
 async def main():
-    ids = [f'bluff_test_{uuid.uuid4().hex[:10]}_{i}' for i in range(10)]
+    ids = [identity() for _ in range(10)]
     people = [{'player_id': p, 'name': f'玩家{i}', 'avatar':'🐭'} for i,p in enumerate(ids)]
     room_id = (await request('/lobby/rooms', people[0]))['id']
     lobby, game = {}, {}

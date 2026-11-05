@@ -1,11 +1,10 @@
 import orjson
 import asyncio
-import uuid
 import logging
-from typing import Optional
+from copy import deepcopy
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from models import Player, GamePhase, Role
+from models import GamePhase, Role
 from game import GameManager, Room
 from state_store import StateStore
 
@@ -31,27 +30,64 @@ state_store = StateStore()
 connections: dict[str, WebSocket] = {}
 # player_id -> room_id (in-memory cache, synced with Redis)
 player_rooms: dict[str, str] = {}
+pending_saves: dict[str, asyncio.Task] = {}
+dirty_rooms: set[str] = set()
+saved_snapshots: dict[str, dict] = {}
+background_tasks: list[asyncio.Task] = []
+
+
+@app.get('/healthz')
+async def healthz():
+    from lobby import api as lobby_api
+    await lobby_api.db().ping()
+    return {'status': 'ok'}
 
 
 async def _save_room_to_redis(room_data: dict):
     """Internal: save room data to Redis."""
     try:
         await state_store.save_room(room_data)
+        return True
     except Exception as e:
         logger.error(f"Failed to save room to Redis: {e}")
+        return False
 
 
 def save_room_to_redis(room: Room):
-    """Fire-and-forget: schedule Redis save without blocking the event loop."""
+    """Coalesce pending writes for one room while preserving their order."""
+    dirty_rooms.add(room.id)
+    if room.id in pending_saves:
+        return
+
     async def save_current():
-        if game_manager.rooms.get(room.id) is room:
-            await _save_room_to_redis(room.serialize())
-    asyncio.create_task(save_current())
+        try:
+            while room.id in dirty_rooms and game_manager.rooms.get(room.id) is room:
+                dirty_rooms.discard(room.id)
+                snapshot = deepcopy(room.serialize())
+                if saved_snapshots.get(room.id) != snapshot and await _save_room_to_redis(snapshot):
+                    saved_snapshots[room.id] = snapshot
+        finally:
+            dirty_rooms.discard(room.id)
+            pending_saves.pop(room.id, None)
+
+    pending_saves[room.id] = asyncio.create_task(save_current())
+
+
+async def flush_room_save(room_id: str):
+    task = pending_saves.get(room_id)
+    if task:
+        await task
+
+
+async def forget_room_save(room_id: str):
+    await flush_room_save(room_id)
+    saved_snapshots.pop(room_id, None)
 
 
 async def delete_room_from_redis(room_id: str):
     """Delete room from Redis."""
     try:
+        await forget_room_save(room_id)
         await state_store.delete_room(room_id)
         await state_store.remove_players_in_room(room_id)
     except Exception as e:
@@ -106,14 +142,20 @@ async def startup_event():
             logger.info(f"Restored {restored} rooms from Redis")
 
     lobby_api.start_cleanup()
-    asyncio.create_task(cleanup_stale_rooms_task())
-    asyncio.create_task(periodic_save_task())
+    background_tasks.extend([asyncio.create_task(cleanup_stale_rooms_task()),
+                             asyncio.create_task(periodic_save_task())])
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     from lobby import api as lobby_api
     await lobby_api.stop_cleanup()
+    for task in background_tasks:
+        task.cancel()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+    # Finish pending writes before the final shutdown snapshots.
+    await asyncio.gather(*list(pending_saves.values()), return_exceptions=True)
     # Save all rooms before shutdown (must await, process is exiting)
     for room in game_manager.rooms.values():
         await _save_room_to_redis(room.serialize())
@@ -157,96 +199,6 @@ async def send_room_state(room: Room):
         from lobby import api as lobby_api
         if lobby_api.redis is not None:
             asyncio.create_task(lobby_api.game_changed(room.id))
-
-
-async def handle_create_room(ws: WebSocket, player_id: str, data: dict):
-    # Check if player is already in a room
-    existing_room = game_manager.find_player_room(player_id)
-    if existing_room:
-        await ws.send_json({"type": "error", "data": {"message": "你已经在一个房间中"}})
-        return
-
-    name = data.get("name", "")
-    avatar = data.get("avatar", "")
-    player = Player(player_id, name, avatar)
-    room = game_manager.create_room(player)
-    player_rooms[player_id] = room.id
-    await state_store.set_player_room(player_id, room.id)
-
-    # Room settings
-    if "thief_see_all_dice" in data:
-        room.thief_see_all_dice = bool(data["thief_see_all_dice"])
-    if "max_dice" in data:
-        val = int(data["max_dice"])
-        if 6 <= val <= 10:
-            room.max_dice = val
-    # Outsider settings
-    if "outsider_dodobird" in data:
-        room.outsider_dodobird = bool(data["outsider_dodobird"])
-
-    await ws.send_json({
-        "type": "room_created",
-        "data": {"room_id": room.id}
-    })
-    await send_room_state(room)
-
-
-async def handle_join_room(ws: WebSocket, player_id: str, data: dict):
-    room_id = data.get("room_id", "").strip()
-    if not room_id:
-        await ws.send_json({"type": "error", "data": {"message": "请输入房间号"}})
-        return
-
-    room = game_manager.get_room(room_id)
-    if not room:
-        await ws.send_json({"type": "error", "data": {"message": "房间不存在"}})
-        return
-
-    if player_id in room.players:
-        # Reconnection (active player)
-        room.players[player_id].connected = True
-        player_rooms[player_id] = room.id
-        await state_store.set_player_room(player_id, room.id)
-        await send_room_state(room)
-        return
-
-    if player_id in room.spectators:
-        # Reconnection (spectator)
-        room.spectators[player_id].connected = True
-        player_rooms[player_id] = room.id
-        await state_store.set_player_room(player_id, room.id)
-        await send_room_state(room)
-        return
-
-    name = data.get("name", "")
-    avatar = data.get("avatar", "")
-    player = Player(player_id, name, avatar)
-
-    if room.phase != GamePhase.WAITING:
-        # Game in progress: join as spectator
-        room.add_spectator(player)
-        player_rooms[player_id] = room.id
-        await state_store.set_player_room(player_id, room.id)
-        await broadcast_to_room(room, {
-            "type": "player_joined",
-            "data": {"player_id": player_id, "name": player.name, "avatar": player.avatar, "is_spectator": True}
-        }, exclude=player_id)
-        await send_room_state(room)
-        return
-
-    if len(room.players) >= room.max_players:
-        await ws.send_json({"type": "error", "data": {"message": "房间已满"}})
-        return
-
-    room.add_player(player)
-    player_rooms[player_id] = room.id
-    await state_store.set_player_room(player_id, room.id)
-
-    await broadcast_to_room(room, {
-        "type": "player_joined",
-        "data": {"player_id": player_id, "name": player.name, "avatar": player.avatar}
-    }, exclude=player_id)
-    await send_room_state(room)
 
 
 async def handle_ready(ws: WebSocket, player_id: str, data: dict):
@@ -505,52 +457,6 @@ async def handle_vote(ws: WebSocket, player_id: str, data: dict):
         await ws.send_json({"type": "error", "data": {"message": err_msg}})
 
 
-async def handle_new_game(ws: WebSocket, player_id: str, data: dict):
-    room = game_manager.find_player_room(player_id)
-    if not room:
-        return
-
-    if room.creator_id != player_id:
-        await ws.send_json({"type": "error", "data": {"message": "只有房主可以开启下一局"}})
-        return
-
-    if room.phase != GamePhase.RESULT:
-        await ws.send_json({"type": "error", "data": {"message": "本局结束后才能开启下一局"}})
-        return
-
-    room.reset_for_new_game()
-    await broadcast_to_room(room, {
-        "type": "new_game",
-        "data": {"message": "新一局游戏即将开始，请准备！"}
-    })
-    await send_room_state(room)
-
-
-async def handle_leave_room(ws: WebSocket, player_id: str, data: dict):
-    room = game_manager.find_player_room(player_id)
-    if not room:
-        return
-
-    is_spectator = player_id in room.spectators
-
-    # Spectators can leave anytime; players can only leave during WAITING
-    if not is_spectator and room.phase != GamePhase.WAITING:
-        await ws.send_json({"type": "error", "data": {"message": "游戏进行中无法退出房间"}})
-        return
-
-    should_delete = room.remove_player(player_id)
-    player_rooms.pop(player_id, None)
-    await state_store.remove_player_room(player_id)
-
-    if should_delete:
-        game_manager.remove_room(room.id)
-        await delete_room_from_redis(room.id)
-    else:
-        await send_room_state(room)
-
-    await ws.send_json({"type": "left_room", "data": {}})
-
-
 async def handle_get_game_info(ws: WebSocket, player_id: str, data: dict):
     """Handle explicit request for current game info (Bug3: refresh recovery)."""
     room = game_manager.find_player_room(player_id)
@@ -560,12 +466,6 @@ async def handle_get_game_info(ws: WebSocket, player_id: str, data: dict):
     # Send full room state which now includes my_info
     state = room.get_room_state(for_player_id=player_id)
     await ws.send_json({"type": "room_state", "data": state})
-
-
-async def handle_list_rooms(ws: WebSocket, player_id: str, data: dict):
-    """Return list of joinable rooms."""
-    rooms = game_manager.list_rooms()
-    await ws.send_json({"type": "room_list", "data": {"rooms": rooms}})
 
 
 async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
@@ -608,35 +508,7 @@ async def handle_rejoin_room(ws: WebSocket, player_id: str, data: dict):
         await send_room_state(room)
 
 
-async def handle_update_room_settings(ws: WebSocket, player_id: str, data: dict):
-    """Allow the room creator to update room settings during WAITING phase."""
-    room = game_manager.find_player_room(player_id)
-    if not room:
-        return
-
-    if room.creator_id != player_id:
-        await ws.send_json({"type": "error", "data": {"message": "只有房主可以修改房间设置"}})
-        return
-
-    if room.phase != GamePhase.WAITING:
-        await ws.send_json({"type": "error", "data": {"message": "游戏进行中无法修改设置"}})
-        return
-
-    if "thief_see_all_dice" in data:
-        room.thief_see_all_dice = bool(data["thief_see_all_dice"])
-    if "max_dice" in data:
-        val = int(data["max_dice"])
-        if 6 <= val <= 10:
-            room.max_dice = val
-    if "outsider_dodobird" in data:
-        room.outsider_dodobird = bool(data["outsider_dodobird"])
-
-    await send_room_state(room)
-
-
 MESSAGE_HANDLERS = {
-    "create_room": handle_create_room,
-    "join_room": handle_join_room,
     "rejoin_room": handle_rejoin_room,
     "ready": handle_ready,
     "peek": handle_peek,
@@ -645,17 +517,16 @@ MESSAGE_HANDLERS = {
     "night_done": handle_night_done,
     "request_vote": handle_request_vote,
     "vote": handle_vote,
-    "new_game": handle_new_game,
-    "update_room_settings": handle_update_room_settings,
-    "leave_room": handle_leave_room,
     "get_game_info": handle_get_game_info,
-    "list_rooms": handle_list_rooms,
 }
 
 
 @app.websocket("/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, player_id: str):
     from lobby import api as lobby_api
+    if not await lobby_api.socket_authorized(websocket, player_id):
+        await websocket.close(code=4403)
+        return
     if not lobby_api.redis:
         await websocket.close(code=1013)
         return
@@ -675,41 +546,41 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         await websocket.close(code=4403)
         return
     await websocket.accept()
-    previous = connections.get(player_id)
-    connections[player_id] = websocket
-    if previous and previous is not websocket:
-        await previous.close(code=4001)
-
-    # Check for reconnection
-    room_id = player_rooms.get(player_id)
-    if room_id:
-        room = game_manager.get_room(room_id)
-        if room and player_id in room.players:
-            room.players[player_id].connected = True
-            room.update_disconnect_timer()
-            await send_room_state(room)
-            await broadcast_to_room(room, {
-                "type": "player_reconnected",
-                "data": {"player_id": player_id, "name": room.players[player_id].name}
-            }, exclude=player_id)
-
-            # After reconnection, check if all votes are now in
-            if room.phase == GamePhase.VOTING and room.all_voted():
-                result = room.tally_votes()
-                await broadcast_to_room(room, {"type": "game_result", "data": result})
-                await send_room_state(room)
-        elif room and player_id in room.spectators:
-            room.spectators[player_id].connected = True
-            room.update_disconnect_timer()
-            await send_room_state(room)
-
-    # Tell client their player_id and whether they have an active room
-    connected_data = {"player_id": player_id}
-    if room_id:
-        connected_data["room_id"] = room_id
-    await websocket.send_json({"type": "connected", "data": connected_data})
-
     try:
+        previous = connections.get(player_id)
+        connections[player_id] = websocket
+        if previous and previous is not websocket:
+            await previous.close(code=4001)
+
+        # Check for reconnection
+        room_id = player_rooms.get(player_id)
+        if room_id:
+            room = game_manager.get_room(room_id)
+            if room and player_id in room.players:
+                room.players[player_id].connected = True
+                room.update_disconnect_timer()
+                await send_room_state(room)
+                await broadcast_to_room(room, {
+                    "type": "player_reconnected",
+                    "data": {"player_id": player_id, "name": room.players[player_id].name}
+                }, exclude=player_id)
+
+                # After reconnection, check if all votes are now in
+                if room.phase == GamePhase.VOTING and room.all_voted():
+                    result = room.tally_votes()
+                    await broadcast_to_room(room, {"type": "game_result", "data": result})
+                    await send_room_state(room)
+            elif room and player_id in room.spectators:
+                room.spectators[player_id].connected = True
+                room.update_disconnect_timer()
+                await send_room_state(room)
+
+        # Tell client their player_id and whether they have an active room
+        connected_data = {"player_id": player_id}
+        if room_id:
+            connected_data["room_id"] = room_id
+        await websocket.send_json({"type": "connected", "data": connected_data})
+
         while True:
             raw = await websocket.receive_text()
             try:
@@ -717,6 +588,10 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             except (orjson.JSONDecodeError, ValueError):
                 continue
 
+            if connections.get(player_id) is not websocket:
+                break
+            if not isinstance(msg, dict) or not isinstance(msg.get("data", {}), dict):
+                continue
             msg_type = msg.get("type")
             msg_data = msg.get("data", {})
 
@@ -736,6 +611,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 await websocket.send_json({"type": "error", "data": {"message": f"未知消息类型: {msg_type}"}})
 
     except WebSocketDisconnect:
+        pass
+    finally:
         if connections.get(player_id) is not websocket:
             return
         connections.pop(player_id, None)
@@ -765,6 +642,9 @@ app.include_router(bluff_router)
 async def holdem_socket(websocket: WebSocket, room_id: str, player_id: str):
     from lobby import api as lobby_api
     from games.holdem.main import websocket_endpoint as game_socket
+    if not await lobby_api.socket_authorized(websocket, player_id):
+        await websocket.close(code=4403)
+        return
     try:
         room = await lobby_api.load(room_id)
     except Exception:

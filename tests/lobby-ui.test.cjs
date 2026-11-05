@@ -13,6 +13,7 @@ async function app(start=initial(), directory=[], savedName='房主') {
   w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   w.fetch=async(url,opts)=>{
     calls.push({url,body:opts?.body?JSON.parse(opts.body):undefined});
+    if(url==='/lobby/identity')return {ok:true,json:async()=>({player_id:'p0'})};
     if(url==='/lobby/ping')return {ok:true,json:async()=>({type:'pong'})};
     if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',rules:[{title:'夜晚行动',items:['瞌睡鼠独自醒来可以偷看骰子。']},{title:'胜负判定',items:['投出大盗则瞌睡鼠获胜。']}],settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
     if(url==='/lobby/rooms'&&!opts?.body)return {ok:true,json:async()=>clone(directory)};

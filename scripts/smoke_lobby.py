@@ -5,8 +5,11 @@ Run against an isolated server: LOBBY_URL=http://127.0.0.1:8088 python scripts/s
 import asyncio
 import json
 import os
+import subprocess
 import urllib.error
 import urllib.request
+import urllib.parse
+import http.cookiejar
 import uuid
 
 import websockets
@@ -16,11 +19,31 @@ BASE = os.environ.get('LOBBY_URL', 'http://127.0.0.1:8088').rstrip('/')
 WS_BASE = BASE.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
 
 
+openers = {}
+cookies = {}
+
+def identity():
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    req = urllib.request.Request(BASE + '/lobby/identity', data=b'{}', headers={'Content-Type': 'application/json'})
+    with opener.open(req, timeout=5) as response:
+        player = json.load(response)['player_id']
+    openers[player] = opener
+    cookies[player] = '; '.join(f'{cookie.name}={cookie.value}' for cookie in jar)
+    return player
+
+async def connect(path, player):
+    return await websockets.connect(WS_BASE + path, extra_headers={'Cookie': cookies[player]})
+
 def request(path, data=None):
     req = urllib.request.Request(BASE + path, data=None if data is None else json.dumps(data).encode(),
                                  headers={'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=5) as response:
+        player = (data or {}).get('player_id') or urllib.parse.parse_qs(urllib.parse.urlsplit(path).query).get('player_id', [None])[0]
+        if not player and path.startswith('/lobby/players/'):
+            player = path.split('/')[3]
+        opener = openers.get(player, urllib.request.build_opener())
+        with opener.open(req, timeout=5) as response:
             return json.load(response)
     except urllib.error.HTTPError as e:
         raise AssertionError(f'{path}: {e.code} {e.read().decode()}') from e
@@ -70,27 +93,72 @@ async def req(path, data=None):
 
 
 async def main():
-    ids = [f'test_{uuid.uuid4().hex[:12]}' for _ in range(5)]
+    ids = [identity() for _ in range(5)]
     profiles = [{'player_id': p, 'name': f'测试{i}', 'avatar': '🐭'} for i, p in enumerate(ids)]
     room = (await req('/lobby/rooms', profiles[0]))['id']
     lobby_clients, games = [], []
     try:
         for profile in profiles[1:]:
             await req(f'/lobby/rooms/{room}/join', profile)
+        spoof = urllib.request.Request(
+            BASE + f'/lobby/rooms/{room}/password',
+            data=json.dumps({'player_id': ids[0], 'password': 'fake-password'}).encode(),
+            headers={'Content-Type': 'application/json'},
+        )
+        try:
+            await asyncio.to_thread(openers[ids[1]].open, spoof, timeout=5)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403
+        else:
+            raise AssertionError('A different device could impersonate the owner')
+        try:
+            await websockets.connect(f'{WS_BASE}/lobby/rooms/{room}/ws/{ids[0]}',
+                                     extra_headers={'Cookie': cookies[ids[1]]})
+        except websockets.InvalidStatusCode as exc:
+            assert exc.status_code == 403
+        else:
+            raise AssertionError('A different device could connect as the owner')
         for pid in ids:
-            lobby_clients.append(Client(await websockets.connect(f'{WS_BASE}/lobby/rooms/{room}/ws/{pid}')))
+            lobby_clients.append(Client(await connect(f'/lobby/rooms/{room}/ws/{pid}', pid)))
         for client in lobby_clients:
             await client.wait('room_state')
         await asyncio.to_thread(denied, f'/lobby/rooms/{room}/game', {'player_id': ids[1], 'game_id': 'cheese', 'options': {'participants': ids}}, 403)
         await configure_and_ready(req, room, ids[0], 'cheese', ids, {'outsider_dodobird':True})
         await asyncio.to_thread(denied, f'/lobby/rooms/{room}/game', {'player_id': ids[0], 'game_id': 'holdem', 'options': {}}, 409)
         for pid in ids:
-            games.append(Client(await websockets.connect(f'{WS_BASE}/ws/{pid}')))
+            games.append(Client(await connect(f'/ws/{pid}', pid)))
         for client in games:
             await client.wait('connected')
         for client in games:
             await client.send('get_game_info')
         infos = [(await client.wait('room_state', lambda m: bool(m['data'].get('my_info'))))['data']['my_info'] for client in games]
+        if os.environ.get('CHEESE_RESTART_CONTAINER'):
+            container = os.environ['CHEESE_RESTART_CONTAINER']
+            if container != 'chesse-bluff-test-backend-1' or ':18089' not in BASE:
+                raise AssertionError('Restart requires the dedicated 18089 test instance')
+            await asyncio.to_thread(subprocess.run, ['docker', 'restart', container], check=True, capture_output=True)
+            for client in games + lobby_clients:
+                await client.close()
+            games, lobby_clients = [], []
+            for _ in range(60):
+                try:
+                    await req('/lobby/games')
+                    break
+                except Exception:
+                    await asyncio.sleep(.25)
+            for pid in ids:
+                client = Client(await connect(f'/lobby/rooms/{room}/ws/{pid}', pid))
+                await client.wait('room_state')
+                lobby_clients.append(client)
+            recovered = []
+            for pid in ids:
+                client = Client(await connect(f'/ws/{pid}', pid))
+                games.append(client)
+                await client.wait('connected')
+                await client.send('get_game_info')
+                recovered.append((await client.wait('room_state', lambda m: bool(m['data'].get('my_info'))))['data']['my_info'])
+            assert [info['role'] for info in recovered] == [info['role'] for info in infos]
+            infos = recovered
         thief = next(i for i,x in enumerate(infos) if x['role'] == 'thief')
         bird = next(i for i,x in enumerate(infos) if x['role'] == 'dodobird')
         rest = [i for i in range(5) if i not in (thief, bird)]
@@ -121,7 +189,7 @@ async def main():
             await client.close()
         games = []
         for pid in ids:
-            games.append(Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{room}/{pid}')))
+            games.append(Client(await connect(f'/holdem-ws/{room}/{pid}', pid)))
         msg = await games[0].wait('room_state', lambda m: m['room']['status'] == 'playing')
         assert sum(p['chips'] + p['total_bet_this_hand'] for p in msg['room']['players'].values()) == 5000
         actor = ids.index(msg['room']['hand']['current_player_id'])
@@ -129,7 +197,7 @@ async def main():
         await games[0].wait('room_state', lambda m: m['room']['status'] == 'waiting')
         await games[0].ws.send(json.dumps({'type': 'end_game'}))
         await games[0].wait('room_state', lambda m: m['room']['status'] == 'finished')
-        recovered = Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{room}/{ids[0]}'))
+        recovered = Client(await connect(f'/holdem-ws/{room}/{ids[0]}', ids[0]))
         restored = await recovered.wait('room_state')
         assert restored['room']['status'] == 'finished' and len(restored['standings']) == 2
         assert sum(p['net'] for p in restored['standings']) == 0

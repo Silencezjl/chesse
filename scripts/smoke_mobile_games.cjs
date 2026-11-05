@@ -2,12 +2,13 @@
 if (!['18088','18089'].includes(new URL(process.env.LOBBY_URL || 'http://localhost:18088').port)) throw Error('Use isolated development port 18088 or 18089');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');const assert=require('node:assert/strict');
 (async()=>{const base=process.env.LOBBY_URL || 'http://localhost:18088',errors=[];const b=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined,args:['--no-sandbox']});
-const req=async(path,body)=>{const r=await fetch(base+'/lobby'+path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
+const cookies=new Map();const req=async(path,body)=>{const pid=body?.player_id || new URL(base+path).searchParams.get('player_id');const r=await fetch(base+'/lobby'+path,{method:body?'POST':'GET',headers:{'content-type':'application/json',...(pid?{cookie:cookies.get(pid)}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
 try{for(const game of ['cheese','bluff']){
- const count=game==='cheese'?5:3,ids=Array.from({length:count},(_,i)=>`mobile_${Date.now()}_${i}`),pages=[],contexts=[];
+ const count=game==='cheese'?5:3,ids=[],pages=[],contexts=[];
+ for(let i=0;i<count;i++){const r=await fetch(base+'/lobby/identity',{method:'POST'});const data=await r.json();ids.push(data.player_id);cookies.set(data.player_id,r.headers.get('set-cookie').split(';')[0]);}
  const rid=(await req('/rooms',{player_id:ids[0],name:'手机'+game+'测试',avatar:'🐭',game_id:game})).id;
  for(let i=1;i<count;i++)await req(`/rooms/${rid}/join`,{player_id:ids[i],name:'朋友'+i,avatar:'🐸'});
- for(const pid of ids){const c=await b.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});contexts.push(c);await c.addInitScript(({pid})=>{localStorage.setItem('lobby_player_id',pid);},{pid});const p=await c.newPage();p.on('pageerror',e=>errors.push(e.stack));await p.goto(base);await p.locator('#ready:not(:disabled)').waitFor();pages.push(p);}
+ for(const pid of ids){const c=await b.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});contexts.push(c);await c.addCookies([{name:'lobby_session',value:cookies.get(pid).split('=')[1],url:base}]);const p=await c.newPage();p.on('pageerror',e=>errors.push(e.stack));await p.goto(base);await p.locator('#ready:not(:disabled)').waitFor();pages.push(p);}
  for(const p of pages)await p.locator('#ready').click();
  for(const p of pages)await p.locator('iframe').waitFor();
  const frames=pages.map(p=>p.frameLocator('iframe'));

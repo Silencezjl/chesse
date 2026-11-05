@@ -35,37 +35,6 @@ class PlayerStatus(str, Enum):
     SITTING_OUT = "sitting_out"
 
 
-class CreateRoomRequest(BaseModel):
-    player_name: str
-    player_emoji: str
-    sb_amount: int
-    initial_chips: int
-    rebuy_minimum: int = 0  # 0 means must be zero to rebuy
-    hand_interval: int = 5  # seconds between hands
-    max_chips: int = 0  # 0 means no cap; >0 means auto-cashout above this
-    device_id: str = ""
-
-
-class JoinRoomRequest(BaseModel):
-    room_id: str
-    player_name: str
-    player_emoji: str
-    device_id: str = ""
-
-
-class SeatRequest(BaseModel):
-    seat_index: int
-
-
-class ActionRequest(BaseModel):
-    action: PlayerAction
-    amount: int = 0
-
-
-class SettlementVote(BaseModel):
-    pot_winners: dict[str, list[str]]  # pot_id -> list of winner player_ids
-
-
 class Player(BaseModel):
     id: str
     name: str

@@ -1,6 +1,5 @@
-# Holdem 上游代码
+# Holdem 筹码管理
 
-- 来源及导入版本见 `UPSTREAM.txt`。
-- 后端代码位于本仓库 `backend/games/holdem/`；前端代码位于 `games/holdem/frontend/`。
-- 本次导入已移除启动清空房间行为，并将 Redis 键隔离到 `lobby:game:holdem:` 命名空间。
-- 大厅接入、同源路由和统一部署尚未完成，此目录中的前端尚不是最终入口。
+上游来源及导入版本见 `UPSTREAM.txt`。后端位于 `backend/games/holdem/`，前端位于 `games/holdem/frontend/`。游戏通过统一大厅创建房间、管理成员和开局，通过 `/holdem-ws/` 交换对局消息，Redis 键使用 `lobby:game:holdem:` 前缀。
+
+完整启动和验证方式见仓库根目录 `README.md`。

@@ -1,9 +1,7 @@
 const root = document.querySelector('#app');
 const gameShell = document.querySelector('#game-shell');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid = () => globalThis.crypto?.randomUUID?.() || `p_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-const playerId = localStorage.getItem('lobby_player_id') || uid();
-localStorage.setItem('lobby_player_id', playerId);
+let playerId = '';
 const avatars = GameAvatars.ids;
 let name = PlayerNames.text(localStorage.getItem('lobby_name')).trim(), avatar = GameAvatars.normalize(localStorage.getItem('lobby_avatar'));
 let games = [], rooms = [], room = null, error = '', listError = '', busy = false, booting = true;
@@ -401,7 +399,7 @@ window.addEventListener('message',e=>{
   if(e.data?.type==='game_connection'){gameConnected=Boolean(e.data.connected);render();}
 });
 (async()=>{
-  try{games=await api('/games');const saved=(await api(`/players/${playerId}/room`)).room_id;if(saved)await loadRoom(saved);else await refreshList();}
+  try{const identity=await api('/identity',{});playerId=identity.player_id;localStorage.setItem('lobby_player_id',playerId);games=await api('/games');const saved=(await api(`/players/${playerId}/room`)).room_id;if(saved)await loadRoom(saved);else await refreshList();}
   catch(e){error=e.message;}
   finally{booting=false;if(!name&&!room)openSheet('onboarding');else render();probeLatency();}
 })();

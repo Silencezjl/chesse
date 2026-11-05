@@ -9,7 +9,7 @@ import subprocess
 import time
 import uuid
 import websockets
-from smoke_lobby import Client, req, WS_BASE
+from smoke_lobby import Client, req, WS_BASE, identity, connect
 from waiting_client import configure_and_ready
 
 
@@ -19,20 +19,20 @@ async def main():
     tag='expiry_'+uuid.uuid4().hex[:10]
     rooms=[];clients=[]
     async def create(suffix):
-        pid=tag+suffix
+        pid=identity()
         r=await req('/lobby/rooms',dict(player_id=pid,name='自动解散测试',avatar='🐭'))
         rooms.append((r['id'],[pid]))
         return r['id'],pid
     try:
         empty,p0=await create('_empty')
         active,p1=await create('_active')
-        connected=Client(await websockets.connect(f'{WS_BASE}/lobby/rooms/{active}/ws/{p1}'))
+        connected=Client(await connect(f'/lobby/rooms/{active}/ws/{p1}',p1))
         await connected.wait('room_state');clients.append(connected)
-        playing,p2=await create('_game0');p3=tag+'_game1';rooms[-1][1].append(p3)
+        playing,p2=await create('_game0');p3=identity();rooms[-1][1].append(p3)
         await req(f'/lobby/rooms/{playing}/join',dict(player_id=p3,name='朋友',avatar='🐱'))
         game_lobby=[]
         for pid in (p2,p3):
-            c=Client(await websockets.connect(f'{WS_BASE}/lobby/rooms/{playing}/ws/{pid}'))
+            c=Client(await connect(f'/lobby/rooms/{playing}/ws/{pid}',pid))
             await c.wait('room_state');clients.append(c);game_lobby.append(c)
         await configure_and_ready(req,playing,p2,'holdem',[p2,p3])
         for c in game_lobby:await c.close()
@@ -46,12 +46,12 @@ async def run():
  for rid in sys.argv[2:]:
   key='lobby:room:v1:'+rid
   data=json.loads(await r.get(key))
-  assert all(p.startswith(sys.argv[1]) for p in data['members'])
+  assert set(data['members']) <= set(json.loads(sys.argv[1]))
   data['empty_since']=time.time()-901
   await r.set(key,json.dumps(data))
  await r.aclose()
 asyncio.run(run())"""
-        await asyncio.to_thread(subprocess.run,['docker','exec','chesse-bluff-test-backend-1','python','-c',code,tag,empty,active,playing],check=True,capture_output=True)
+        await asyncio.to_thread(subprocess.run,['docker','exec','chesse-bluff-test-backend-1','python','-c',code,json.dumps([p0,p1,p2,p3]),empty,active,playing],check=True,capture_output=True)
         deadline=time.monotonic()+45
         while time.monotonic()<deadline:
             listed={r['id'] for r in await req('/lobby/rooms')}

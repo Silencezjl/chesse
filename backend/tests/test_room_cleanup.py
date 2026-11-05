@@ -123,7 +123,9 @@ class RoomCleanupTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unresponsive_lobby_socket_is_marked_offline(self):
         r=await self.room()
-        ws=SimpleNamespace(accept=AsyncMock(),close=AsyncMock(),send_json=AsyncMock())
+        from lobby.identity import key
+        api.db().values[key('token')] = 'p123456'
+        ws=SimpleNamespace(cookies={'lobby_session':'token'},accept=AsyncMock(),close=AsyncMock(),send_json=AsyncMock())
         # Use a real cancellable receive to exercise the timeout and finally path.
         async def receive():await asyncio.sleep(100)
         ws.receive_json=receive

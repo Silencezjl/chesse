@@ -2,6 +2,11 @@ services:
   redis:
     image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
+    logging: &log_rotation
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: redis-server --appendonly yes
     volumes:
       - lobby_redis_data:/data
@@ -17,12 +22,18 @@ services:
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim}
     restart: unless-stopped
+    logging: *log_rotation
     depends_on:
       redis:
         condition: service_healthy
     environment:
       PYTHONUNBUFFERED: '1'
       REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
   frontend:
     build:
       context: .
@@ -30,6 +41,7 @@ services:
       args:
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
+    logging: *log_rotation
     ports:
       - "${LOBBY_PORT:-8088}:80"
     depends_on:

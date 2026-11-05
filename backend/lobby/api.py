@@ -6,7 +6,9 @@ import time
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from lobby.identity import authorize, issue, socket_authorized
+from lobby.locks import RoomLocks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
@@ -21,8 +23,9 @@ router = APIRouter(prefix='/lobby')
 logger = logging.getLogger(__name__)
 redis: Redis | None = None
 runtimes = {}
-locks = defaultdict(asyncio.Lock)
+locks = RoomLocks()
 connections = defaultdict(dict)
+state_senders = {}
 transitions = set()
 countdowns = {}
 owner_timers = {}
@@ -33,6 +36,9 @@ EMPTY_ROOM_TTL = 15 * 60
 CLEANUP_INTERVAL = 30
 HEARTBEAT_TIMEOUT = 75
 cleanup_task = None
+directory_cache = None
+directory_generation = 0
+directory_lock = asyncio.Lock()
 
 
 class Profile(BaseModel):
@@ -72,8 +78,10 @@ class MemberRequest(BaseModel):
 
 
 def configure(client, manager, store, sockets, player_map):
-    global redis, runtimes
+    global redis, runtimes, directory_cache, directory_generation
     redis = client
+    directory_cache = None
+    directory_generation += 1
     runtimes = {'cheese': CheeseRuntime(manager, store, sockets, player_map),
                 'holdem': HoldemRuntime(), 'bluff': BluffRuntime()}
 
@@ -103,6 +111,7 @@ def track_empty(room, now=None):
 
 
 async def save(room, *, add_player=None, remove_player=None):
+    global directory_generation
     track_empty(room)
     data = room.snapshot()
     pipe = db().pipeline()
@@ -113,6 +122,7 @@ async def save(room, *, add_player=None, remove_player=None):
     if remove_player:
         pipe.delete(PLAYER_PREFIX + remove_player)
     await pipe.execute()
+    directory_generation += 1
 
 
 async def current_state(data):
@@ -122,6 +132,7 @@ async def current_state(data):
 
 async def sync(room):
     before = room.snapshot()
+    state = None
     if room.data['stage'] == 'playing':
         state = await current_state(room.data)
         if state and GAMES[room.data['game_id']].can_switch(state):
@@ -132,12 +143,14 @@ async def sync(room):
     room.failover()
     if before != room.data:
         await save(room)
+    return state
 
 
 async def public(room):
-    await sync(room)
+    state = await sync(room)
     saved = room.snapshot()
-    state = await current_state(saved)
+    if state is None and saved['stage'] != 'playing':
+        state = await current_state(saved)
     fields = ('id', 'owner_id', 'members', 'game_id', 'stage', 'seats', 'options', 'revision',
               'countdown', 'session_id', 'owner_offline_since', 'start_error', 'created_at', 'pending_member_ids')
     data = {key: saved[key] for key in fields if key in saved}
@@ -151,16 +164,42 @@ async def public(room):
     return data
 
 
+def queue_state(ws, message):
+    """Send the latest pending snapshot outside the room lock."""
+    key = id(ws)
+    sender = state_senders.get(key)
+    if sender:
+        sender['pending'] = message
+        return
+    sender = {'pending': message}
+    state_senders[key] = sender
+
+    async def send():
+        try:
+            while sender['pending'] is not None:
+                current, sender['pending'] = sender['pending'], None
+                await asyncio.wait_for(ws.send_json(current), timeout=2)
+        except Exception:
+            logger.debug('Unable to send room state', exc_info=True)
+            try:
+                await asyncio.wait_for(ws.close(code=1011), timeout=1)
+            except Exception:
+                pass
+        finally:
+            state_senders.pop(key, None)
+
+    sender['task'] = asyncio.create_task(send())
+
+
 async def publish(room):
     message = {'type': 'room_state', 'data': await public(room)}
     for ws in list(connections.get(room.data['id'], {}).values()):
-        try:
-            await ws.send_json(message)
-        except Exception:
-            pass
+        queue_state(ws, message)
 
 
 async def game_changed(room_id):
+    global directory_generation
+    directory_generation += 1
     try:
         async with locks[room_id]:
             await publish(await load(room_id))
@@ -314,6 +353,9 @@ def schedule(room):
         countdowns[rid] = asyncio.create_task(finish_countdown(rid, c['token'], c['deadline']))
 
 
+router.add_api_route('/identity', issue, methods=['POST'])
+
+
 @router.get('/ping')
 async def latency_ping():
     return JSONResponse({'type':'pong'}, headers={'Cache-Control':'no-store'})
@@ -326,6 +368,18 @@ async def games():
 
 @router.get('/rooms')
 async def list_rooms():
+    global directory_cache
+    async with directory_lock:
+        if directory_cache and directory_cache[0] == directory_generation and time.monotonic() < directory_cache[1]:
+            return directory_cache[2]
+        generation = directory_generation
+        result = await build_room_list()
+        if generation == directory_generation:
+            directory_cache = (generation, time.monotonic() + 2, result)
+        return result
+
+
+async def build_room_list():
     result = []
     for rid in await db().smembers(ROOMS_KEY):
         async with locks[rid]:
@@ -359,7 +413,7 @@ async def preview(room_id: str):
         return summary(room)
 
 
-@router.post('/rooms')
+@router.post('/rooms', dependencies=[Depends(authorize)])
 async def create_room(profile: Profile):
     async with locks['__membership__']:
         existing = await db().get(PLAYER_PREFIX + profile.player_id)
@@ -381,7 +435,7 @@ async def create_room(profile: Profile):
         return await public(room)
 
 
-@router.get('/players/{player_id}/room')
+@router.get('/players/{player_id}/room', dependencies=[Depends(authorize)])
 async def player_room(player_id: str):
     rid = await db().get(PLAYER_PREFIX + player_id)
     if rid and not await db().exists(PREFIX + rid):
@@ -390,7 +444,7 @@ async def player_room(player_id: str):
     return {'room_id': rid}
 
 
-@router.get('/rooms/{room_id}')
+@router.get('/rooms/{room_id}', dependencies=[Depends(authorize)])
 async def get_room(room_id: str, player_id: str):
     async with locks[room_id]:
         room = await load(room_id)
@@ -398,7 +452,7 @@ async def get_room(room_id: str, player_id: str):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/join')
+@router.post('/rooms/{room_id}/join', dependencies=[Depends(authorize)])
 async def join_room(room_id: str, profile: Profile):
     async with locks['__membership__']:
         async with locks[room_id]:
@@ -418,6 +472,7 @@ async def join_room(room_id: str, profile: Profile):
 
 
 async def remove_member(room, pid):
+    global directory_generation
     rid = room.data['id']
     rule(room.leave, pid)
     if room.data['members']:
@@ -430,6 +485,7 @@ async def remove_member(room, pid):
         pipe.delete(PREFIX + rid)
         pipe.srem(ROOMS_KEY, rid)
         await pipe.execute()
+        directory_generation += 1
         cancel_task(owner_timers, rid)
     schedule(room)
     socket = connections.get(rid, {}).pop(pid, None)
@@ -437,7 +493,7 @@ async def remove_member(room, pid):
         await socket.close(code=4003)
 
 
-@router.post('/rooms/{room_id}/leave')
+@router.post('/rooms/{room_id}/leave', dependencies=[Depends(authorize)])
 async def leave_room(room_id: str, player: dict):
     async with locks['__membership__']:
         async with locks[room_id]:
@@ -449,7 +505,7 @@ async def leave_room(room_id: str, player: dict):
     return {'ok': True}
 
 
-@router.post('/rooms/{room_id}/game')
+@router.post('/rooms/{room_id}/game', dependencies=[Depends(authorize)])
 async def select_game(room_id: str, request: SelectGame):
     async with locks[room_id]:
         room = await load(room_id)
@@ -464,7 +520,7 @@ async def select_game(room_id: str, request: SelectGame):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/password')
+@router.post('/rooms/{room_id}/password', dependencies=[Depends(authorize)])
 async def change_password(room_id: str, request: PasswordRequest):
     async with locks[room_id]:
         room = await load(room_id)
@@ -478,7 +534,7 @@ async def change_password(room_id: str, request: PasswordRequest):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/profile')
+@router.post('/rooms/{room_id}/profile', dependencies=[Depends(authorize)])
 async def update_profile(room_id: str, request: Profile):
     async with locks[room_id]:
         room = await load(room_id)
@@ -494,7 +550,7 @@ async def update_profile(room_id: str, request: Profile):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/ready')
+@router.post('/rooms/{room_id}/ready', dependencies=[Depends(authorize)])
 async def ready(room_id: str, request: ReadyRequest):
     async with locks[room_id]:
         room = await load(room_id)
@@ -507,7 +563,7 @@ async def ready(room_id: str, request: ReadyRequest):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/seat')
+@router.post('/rooms/{room_id}/seat', dependencies=[Depends(authorize)])
 async def seat(room_id: str, request: SeatRequest):
     async with locks[room_id]:
         room = await load(room_id)
@@ -518,7 +574,7 @@ async def seat(room_id: str, request: SeatRequest):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/return')
+@router.post('/rooms/{room_id}/return', dependencies=[Depends(authorize)])
 async def return_room(room_id: str, request: MemberRequest):
     async with locks[room_id]:
         room = await load(room_id)
@@ -540,7 +596,7 @@ async def return_room(room_id: str, request: MemberRequest):
         return await public(room)
 
 
-@router.post('/rooms/{room_id}/manage')
+@router.post('/rooms/{room_id}/manage', dependencies=[Depends(authorize)])
 async def manage(room_id: str, request: MemberRequest, action: str):
     async with locks['__membership__']:
         async with locks[room_id]:
@@ -567,6 +623,9 @@ async def manage(room_id: str, request: MemberRequest, action: str):
 
 @router.websocket('/rooms/{room_id}/ws/{player_id}')
 async def room_socket(ws: WebSocket, room_id: str, player_id: str):
+    if not await socket_authorized(ws, player_id):
+        await ws.close(code=4403)
+        return
     accepted = False
     try:
         async with locks[room_id]:
@@ -590,13 +649,17 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
                 break
             if connections[room_id].get(player_id) is not ws:
                 break
+            if not isinstance(message, dict):
+                continue
             if message.get('type') == 'ping':
                 await ws.send_json({'type': 'pong', 'id': message.get('id')})
             elif message.get('type') == 'refresh':
                 async with locks[room_id]:
+                    if connections.get(room_id, {}).get(player_id) is not ws:
+                        break
                     room = await load(room_id)
                     member(room, player_id)
-                    await publish(room)
+                    queue_state(ws, {'type': 'room_state', 'data': await public(room)})
     except HTTPException:
         if not accepted:
             await ws.close(code=4403)
@@ -606,6 +669,8 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
         if accepted and connections[room_id].get(player_id) is ws:
             connections[room_id].pop(player_id, None)
             async with locks[room_id]:
+                if connections.get(room_id, {}).get(player_id):
+                    return
                 try:
                     room = await load(room_id)
                     room.disconnect(player_id)
@@ -619,6 +684,7 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
 
 async def cleanup_empty_rooms(now=None):
     """Recheck under membership + room locks; delete only this expired room's keys."""
+    global directory_generation
     now = time.time() if now is None else now
     for rid in list(await db().smembers(ROOMS_KEY)):
         try:
@@ -632,6 +698,7 @@ async def cleanup_empty_rooms(now=None):
                         pipe = db().pipeline()
                         pipe.srem(ROOMS_KEY, rid)
                         await pipe.execute()
+                        directory_generation += 1
                         continue
                     before = room.data['empty_since']
                     online = track_empty(room, now)
@@ -651,6 +718,7 @@ async def cleanup_empty_rooms(now=None):
                         pipe.delete(PREFIX + rid)
                         pipe.srem(ROOMS_KEY, rid)
                         await pipe.execute()
+                        directory_generation += 1
                         cancel_task(countdowns, rid)
                         cancel_task(owner_timers, rid)
                         connections.pop(rid, None)
@@ -685,3 +753,12 @@ async def stop_cleanup():
         except asyncio.CancelledError:
             pass
         cleanup_task = None
+    from games.bluff.service import timers
+    tasks = list(countdowns.values()) + list(owner_timers.values()) + list(timers.values())
+    tasks += [sender['task'] for sender in list(state_senders.values())]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    countdowns.clear()
+    owner_timers.clear()
+    timers.clear()

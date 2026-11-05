@@ -1,101 +1,31 @@
 from __future__ import annotations
 import asyncio
 import time
-import uuid
-import random
 import json
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import WebSocket, WebSocketDisconnect
 
 from .models import (
-    CreateRoomRequest, JoinRoomRequest, Room, Player,
-    PlayerStatus, RoomStatus, HandPhase, ActionRequest,
-    PlayerAction, SettlementVote, SeatRequest,
+    Room,
+    PlayerStatus, RoomStatus, HandPhase,
+    PlayerAction,
 )
-from .redis_manager import save_room, get_room, list_rooms, delete_room, close_redis
+from .redis_manager import save_room, get_room
 from .game_engine import (
     start_hand, process_action, get_seated_players,
-    can_rebuy, do_rebuy, can_cashout, do_cashout, get_active_players,
+    can_rebuy, do_rebuy, can_cashout, do_cashout,
     propose_settlement, confirm_settlement, reject_settlement,
     end_game, get_final_standings,
 )
 from .ws_manager import manager
+from lobby.locks import RoomLocks
 
 
 # Per-room locks to serialize state mutations and prevent race conditions
-_room_locks: dict[str, asyncio.Lock] = {}
+_room_locks = RoomLocks()
 
 
 def get_room_lock(room_id: str) -> asyncio.Lock:
-    if room_id not in _room_locks:
-        _room_locks[room_id] = asyncio.Lock()
     return _room_locks[room_id]
-
-
-EMOJIS = [
-    "😀","😎","🤠","🦊","🐱","🐶","🐼","🦁","🐯","🐸",
-    "🐵","🦄","🐲","🦅","🐧","🐨","🐰","🐷","🦋","🌟",
-    "🔥","💎","🎯","🎲","👑","🃏","♠️","♥️","♦️","♣️",
-]
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Start background room cleanup task
-    task = asyncio.create_task(room_cleanup_task())
-    yield
-    task.cancel()
-    await close_redis()
-
-
-async def room_cleanup_task():
-    """Periodically clean up rooms with no online players for 10 minutes."""
-    while True:
-        await asyncio.sleep(10)
-        try:
-            rooms = await list_rooms()
-            now = time.time()
-            for r in rooms:
-                online = any(p.is_connected for p in r.players.values())
-                if online:
-                    if r.last_all_disconnected_at is not None:
-                        r.last_all_disconnected_at = None
-                        await save_room(r)
-                else:
-                    if r.last_all_disconnected_at is None:
-                        r.last_all_disconnected_at = now
-                        await save_room(r)
-                    elif now - r.last_all_disconnected_at > 600:  # 10 minutes
-                        await delete_room(r.id)
-                        _room_locks.pop(r.id, None)
-        except Exception as e:
-            print(f"Room cleanup error: {e}")
-
-
-app = FastAPI(title="Holdem Chip Manager", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-def generate_player_id() -> str:
-    return uuid.uuid4().hex[:12]
-
-
-def generate_room_id() -> str:
-    return uuid.uuid4().hex[:6].upper()
-
-
-def random_name() -> str:
-    names = ["Player", "Ace", "King", "Queen", "Jack", "Joker", "Shark", "Fish",
-             "Whale", "Tiger", "Eagle", "Fox", "Wolf", "Bear", "Hawk", "Lion"]
-    return f"{random.choice(names)}_{random.randint(10,99)}"
 
 
 def room_to_broadcast(room: Room) -> dict:
@@ -107,153 +37,6 @@ def room_to_broadcast(room: Room) -> dict:
     return message
 
 
-# ─── REST Endpoints ───
-
-async def remove_player_from_all_rooms(player_id: str):
-    """Remove a player from any room they're currently in."""
-    rooms = await list_rooms()
-    for r in rooms:
-        if player_id in r.players:
-            async with get_room_lock(r.id):
-                room = await get_room(r.id)
-                if room and player_id in room.players:
-                    player = room.players[player_id]
-                    if player.seat >= 0:
-                        room.seats[player.seat] = None
-                    del room.players[player_id]
-                    await save_room(room)
-                    await manager.broadcast(room.id, room_to_broadcast(room))
-
-
-@app.post("/api/rooms")
-async def create_room(req: CreateRoomRequest):
-    room_id = generate_room_id()
-    player_id = req.device_id or generate_player_id()
-
-    # Remove player from any existing rooms
-    await remove_player_from_all_rooms(player_id)
-
-    player = Player(
-        id=player_id,
-        name=req.player_name,
-        emoji=req.player_emoji,
-        chips=req.initial_chips,
-    )
-
-    room = Room(
-        id=room_id,
-        owner_id=player_id,
-        sb_amount=req.sb_amount,
-        initial_chips=req.initial_chips,
-        rebuy_minimum=req.rebuy_minimum,
-        hand_interval=req.hand_interval,
-        max_chips=req.max_chips,
-        players={player_id: player},
-    )
-
-    await save_room(room)
-    return {"room_id": room_id, "player_id": player_id}
-
-
-@app.get("/api/rooms")
-async def get_rooms():
-    rooms = await list_rooms()
-    result = []
-    for r in rooms:
-        if r.status != RoomStatus.WAITING:
-            continue
-        owner = r.players.get(r.owner_id)
-        online_count = sum(1 for p in r.players.values() if p.is_connected)
-        result.append({
-            "id": r.id,
-            "owner_name": owner.name if owner else "Unknown",
-            "owner_emoji": owner.emoji if owner else "❓",
-            "sb_amount": r.sb_amount,
-            "bb_amount": r.bb_amount,
-            "initial_chips": r.initial_chips,
-            "player_count": online_count,
-            "status": r.status.value,
-        })
-    return result
-
-
-@app.post("/api/rooms/join")
-async def join_room(req: JoinRoomRequest):
-    player_id = req.device_id or generate_player_id()
-
-    # Quick check before locking
-    room = await get_room(req.room_id)
-    if not room:
-        raise HTTPException(404, "Room not found")
-
-    # If player already in this room (reconnection), just return
-    if player_id in room.players:
-        return {"room_id": room.id, "player_id": player_id}
-
-    # Remove player from any other rooms first
-    await remove_player_from_all_rooms(player_id)
-
-    async with get_room_lock(req.room_id):
-        # Reload room state inside lock
-        room = await get_room(req.room_id)
-        if not room:
-            raise HTTPException(404, "Room not found")
-
-        player = Player(
-            id=player_id,
-            name=req.player_name,
-            emoji=req.player_emoji,
-            chips=room.initial_chips,
-        )
-        room.players[player_id] = player
-        await save_room(room)
-
-    # Broadcast updated room state
-    await manager.broadcast(req.room_id, room_to_broadcast(room))
-
-    return {"room_id": room.id, "player_id": player_id}
-
-
-@app.get("/api/player-room/{player_id}")
-async def get_player_room(player_id: str):
-    """Check if a player is currently in an active room."""
-    rooms = await list_rooms()
-    for r in rooms:
-        if player_id in r.players and r.status != RoomStatus.FINISHED:
-            return {"room_id": r.id}
-    return {"room_id": None}
-
-
-@app.post("/api/rooms/{room_id}/leave/{player_id}")
-async def leave_room_api(room_id: str, player_id: str):
-    """Player intentionally leaves a room. Not allowed during active game."""
-    async with get_room_lock(room_id):
-        room = await get_room(room_id)
-        if not room:
-            return {"ok": True}
-        if room.status == RoomStatus.PLAYING:
-            raise HTTPException(400, "Cannot leave during game")
-        player = room.players.get(player_id)
-        if player:
-            if player.seat >= 0:
-                room.seats[player.seat] = None
-            del room.players[player_id]
-            # Transfer ownership if owner is leaving
-            if player_id == room.owner_id and room.players:
-                room.owner_id = next(iter(room.players))
-            await save_room(room)
-            await manager.broadcast(room_id, room_to_broadcast(room))
-    return {"ok": True}
-
-
-@app.get("/api/random-profile")
-async def random_profile():
-    return {"name": random_name(), "emoji": random.choice(EMOJIS)}
-
-
-# ─── WebSocket ───
-
-@app.websocket("/ws/{room_id}/{player_id}")
 async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
     room = await get_room(room_id)
     if not room or player_id not in room.players:
@@ -263,20 +46,24 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
 
     await manager.connect(room_id, player_id, ws)
 
-    # Mark player connected under lock
-    async with get_room_lock(room_id):
-        room = await get_room(room_id)
-        if room and player_id in room.players:
-            room.players[player_id].is_connected = True
-            room.last_all_disconnected_at = None
-            await save_room(room)
-            await manager.broadcast(room_id, room_to_broadcast(room))
-
     try:
+        # Mark player connected under lock
+        async with get_room_lock(room_id):
+            if manager.rooms.get(room_id, {}).get(player_id) is not ws:
+                return
+            room = await get_room(room_id)
+            if room and player_id in room.players:
+                room.players[player_id].is_connected = True
+                room.last_all_disconnected_at = None
+                await save_room(room)
+                await manager.broadcast(room_id, room_to_broadcast(room))
+
         while True:
             data = await ws.receive_json()
             if manager.rooms.get(room_id, {}).get(player_id) is not ws:
                 return
+            if not isinstance(data, dict):
+                continue
             msg_type = data.get("type")
 
             if msg_type == "ping":
@@ -295,6 +82,8 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
 
             # Acquire per-room lock to prevent concurrent state mutations
             async with get_room_lock(room_id):
+                if manager.rooms.get(room_id, {}).get(player_id) is not ws:
+                    return
                 # Reload room state inside lock
                 room = await get_room(room_id)
                 if not room:
@@ -349,6 +138,8 @@ async def websocket_endpoint(ws: WebSocket, room_id: str, player_id: str):
             return
         manager.disconnect(room_id, player_id)
         async with get_room_lock(room_id):
+            if manager.rooms.get(room_id, {}).get(player_id):
+                return
             room = await get_room(room_id)
             if room and player_id in room.players:
                 room.players[player_id].is_connected = False

@@ -6,12 +6,12 @@ const assert=require('node:assert/strict');
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined,headless:true,args:['--no-sandbox']});
  const base=process.env.LOBBY_URL || 'http://localhost:18088', contexts=[],errors=[];let rid;
  const context=async(name)=>{const c=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});contexts.push(c);const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base);await p.locator('#name').waitFor();assert.equal(await p.locator('#save-profile').isDisabled(),true);assert.equal(await p.locator('#close-sheet').count(),0);await p.keyboard.press('Escape');assert.ok(await p.locator('#name').isVisible());if(name)await p.locator('#name').fill(name);else await p.locator('#random-name').click();await p.locator('#save-profile').click();await p.locator('[role=dialog]').waitFor({state:'detached'});await p.locator('#create-room').waitFor();await p.waitForFunction(()=>/\d+ms/.test(document.querySelector('.top .latency-label')?.textContent || ''));return p;};
- const req=async(path,body)=>{const r=await fetch(base+'/lobby'+path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
+ const cookies=new Map();const req=async(path,body)=>{const pid=body?.player_id || new URL(base+path).searchParams.get('player_id');const r=await fetch(base+'/lobby'+path,{method:body?'POST':'GET',headers:{'content-type':'application/json',...(pid?{cookie:cookies.get(pid)}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
  try{
  const host=await context();await host.locator('#fullscreen-header').click();await host.waitForFunction(()=>document.fullscreenElement===document.documentElement);await host.screenshot({path:'/tmp/chesse-home-360.png'});
  await host.locator('#create-room').click();await host.locator('#room-menu').waitFor();assert.equal(await host.locator('#name').count(),0);assert.equal(await host.locator('#password').count(),0);await host.locator('#game-picker').click();await host.locator('[data-game="holdem"]').click();await host.locator('#ready').waitFor();await host.waitForFunction(()=>/\d+ms/.test(document.querySelector('.top .latency-label')?.textContent || ''));
  assert.ok(await host.evaluate(()=>document.fullscreenElement===document.documentElement));
- rid=await host.evaluate(()=>localStorage.getItem('lobby_room_id'));const hostId=await host.evaluate(()=>localStorage.getItem('lobby_player_id'));
+ rid=await host.evaluate(()=>localStorage.getItem('lobby_room_id'));const hostId=await host.evaluate(()=>localStorage.getItem('lobby_player_id'));cookies.set(hostId,'lobby_session='+((await host.context().cookies()).find(c=>c.name==='lobby_session').value));
  assert.equal((await req(`/rooms/${rid}?player_id=${hostId}`)).has_password,false);
  await host.screenshot({path:'/tmp/chesse-room-360.png'});
  for(const [game,phrase] of [['cheese','独自醒来'],['bluff','质疑到瞎掰人'],['holdem','实体扑克牌']]){await host.locator('#game-picker').click();await host.locator(`[data-game="${game}"]`).click();await host.locator('.waiting-rules').getByText(phrase,{exact:false}).first().waitFor();}
@@ -19,7 +19,7 @@ const assert=require('node:assert/strict');
  await host.setViewportSize({width:360,height:800});
  await host.locator('#room-menu').click();await host.locator('#edit-password').click();await host.locator('#password').fill('1234');await host.locator('#password-form button').last().click();await host.locator('[role=dialog]').waitFor({state:'detached'});assert.equal((await req(`/rooms/${rid}?player_id=${hostId}`)).has_password,true);
  await host.locator('#fullscreen-header').click();await host.waitForFunction(()=>!document.fullscreenElement);
- const guest=await context('朋友甲');await guest.locator(`[data-join="${rid}"]`).click();assert.equal(await guest.locator('#name').count(),0);await guest.locator('#password').fill('wrong');await guest.locator('#room-form button').last().click();await guest.locator('[role=alert]').waitFor();await guest.locator('#password').fill('1234');await guest.locator('#room-form button').last().click();await guest.locator('#ready').waitFor();
+ const guest=await context('朋友甲');const guestId=await guest.evaluate(()=>localStorage.getItem('lobby_player_id'));cookies.set(guestId,'lobby_session='+((await guest.context().cookies()).find(c=>c.name==='lobby_session').value));await guest.locator(`[data-join="${rid}"]`).click();assert.equal(await guest.locator('#name').count(),0);await guest.locator('#password').fill('wrong');await guest.locator('#room-form button').last().click();await guest.locator('[role=alert]').waitFor();await guest.locator('#password').fill('1234');await guest.locator('#room-form button').last().click();await guest.locator('#ready').waitFor();
  await guest.reload();await guest.locator('#ready').waitFor();assert.equal(await guest.evaluate(()=>localStorage.getItem('lobby_name')),'朋友甲');
  await host.locator('#ready').click();await guest.locator('#ready').click();await host.locator('iframe').waitFor();
  await host.locator('.game-toolbar .latency-badge').waitFor();await host.waitForFunction(()=>/\d+ms/.test(document.querySelector('.game-toolbar .latency-label')?.textContent || ''));
@@ -31,12 +31,10 @@ const assert=require('node:assert/strict');
  await host.locator('#show-room').click();await host.locator('#resume').click();assert.equal(await host.locator('iframe').count(),1);
  const state=await req(`/rooms/${rid}?player_id=${hostId}`);const members=Object.keys(state.members);
  // Complete this hand, then end the chip session through its existing protocol.
- const socketPage=await browser.newPage();await socketPage.goto(base);
- const end=await socketPage.evaluate(async({rid,members,base})=>{
-  return await new Promise((resolve,reject)=>{let sockets={},done=false;const timer=setTimeout(()=>reject(Error('end timeout')),15000);
-   for(const pid of members){const ws=new WebSocket(base.replace('http','ws')+`/holdem-ws/${rid}/${pid}`);sockets[pid]=ws;ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type!=='room_state')return;const r=m.room;if(r.status==='playing'&&r.hand?.current_player_id===pid)ws.send(JSON.stringify({type:'action',action:'fold'}));if(r.status==='waiting'&&pid===members[0])ws.send(JSON.stringify({type:'end_game'}));if(r.status==='finished'&&!done){done=true;clearTimeout(timer);Object.values(sockets).forEach(s=>s.close());resolve(true);}};}
-  });
- },{rid,members,base});assert.ok(end);await socketPage.close();
+ const WebSocket=require('ws');
+ await new Promise((resolve,reject)=>{let sockets={},done=false;const timer=setTimeout(()=>reject(Error('end timeout')),15000);
+   for(const pid of members){const ws=new WebSocket(base.replace('http','ws')+`/holdem-ws/${rid}/${pid}`,{headers:{cookie:cookies.get(pid)}});sockets[pid]=ws;ws.on('message',data=>{const m=JSON.parse(data);if(m.type!=='room_state')return;const r=m.room;if(r.status==='playing'&&r.hand?.current_player_id===pid)ws.send(JSON.stringify({type:'action',action:'fold'}));if(r.status==='waiting'&&pid===members[0])ws.send(JSON.stringify({type:'end_game'}));if(r.status==='finished'&&!done){done=true;clearTimeout(timer);Object.values(sockets).forEach(s=>s.close());resolve();}});ws.on('error',reject);}
+ });
  for(const pid of [...members].reverse())await req(`/rooms/${rid}/leave`,{player_id:pid});rid=null;
  assert.deepEqual(errors,[]);console.log('PASS: native fullscreen enter/exit across room and game views with iframe preserved, mandatory first profile, HTTP/WebSocket RTT, one-click unlocked creation, in-room password settings, all three inline game rules, password retry, saved profile/reload, Holdem iframe, candidate privacy/leave, 320–430px layout, cleanup');
  }finally{if(rid)console.log('Room requiring cleanup:',rid);await browser.close();}

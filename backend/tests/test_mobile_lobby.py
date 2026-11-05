@@ -95,10 +95,12 @@ class MobileLobbyTest(unittest.IsolatedAsyncioTestCase):
     async def test_candidates_rejected_at_each_game_socket(self):
         import main
         from games.bluff.service import game_socket
+        from lobby.identity import key
+        api.db().values[key('token')] = 'late'
         for game in ('cheese','holdem','bluff'):
             r=await self.playing(game)
             await api.join_room(r.data['id'],api.Profile(player_id='late',name='晚到',avatar='🐸'))
-            ws=SimpleNamespace(close=AsyncMock(),accept=AsyncMock())
+            ws=SimpleNamespace(close=AsyncMock(),accept=AsyncMock(),cookies={'lobby_session':'token'})
             if game=='cheese':await main.websocket_endpoint(ws,'late')
             elif game=='holdem':await main.holdem_socket(ws,r.data['id'],'late')
             else:await game_socket(ws,r.data['id'],'late')
@@ -175,8 +177,10 @@ class MobileLobbyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers['cache-control'],'no-store')
         data=await self.create();rid=data['id']
         from starlette.websockets import WebSocketDisconnect
-        ws=SimpleNamespace(accept=AsyncMock(),close=AsyncMock(),send_json=AsyncMock(),
-            receive_json=AsyncMock(side_effect=[{'type':'ping','id':42},{'type':'ping'},WebSocketDisconnect()]))
+        from lobby.identity import key
+        api.db().values[key('token')] = 'host'
+        ws=SimpleNamespace(cookies={'lobby_session':'token'},accept=AsyncMock(),close=AsyncMock(),send_json=AsyncMock(),
+            receive_json=AsyncMock(side_effect=[[], None, {'type':'ping','id':42},{'type':'ping'},WebSocketDisconnect()]))
         await api.room_socket(ws,rid,'host')
         messages=[call.args[0] for call in ws.send_json.await_args_list]
         self.assertIn({'type':'pong','id':42},messages)

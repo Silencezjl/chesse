@@ -23,26 +23,6 @@ function saveRoomId(roomId) {
   }
 }
 
-export function getSavedName() {
-  return localStorage.getItem('cheese_player_name') || null;
-}
-
-export function savePlayerName(name) {
-  if (name) {
-    localStorage.setItem('cheese_player_name', name);
-  }
-}
-
-export function getSavedAvatar() {
-  return localStorage.getItem('cheese_player_avatar') || null;
-}
-
-export function savePlayerAvatar(avatar) {
-  if (avatar) {
-    localStorage.setItem('cheese_player_avatar', avatar);
-  }
-}
-
 export default function useWebSocket() {
   const [connected, setConnected] = useState(false);
   const [playerId] = useState(getPlayerId);
@@ -50,7 +30,6 @@ export default function useWebSocket() {
   const [gameInfo, setGameInfo] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [screenShake, setScreenShake] = useState(false);
-  const [roomList, setRoomList] = useState([]);
   const [latency, setLatency] = useState(null);
   const wsRef = useRef(null);
   const pendingRef = useRef(false);
@@ -139,12 +118,6 @@ export default function useWebSocket() {
             setGameInfo(prev => prev ? { ...prev, ...msg.data.my_info } : msg.data.my_info);
           }
           break;
-        case 'room_list':
-          setRoomList(msg.data.rooms || []);
-          break;
-        case 'room_created':
-          addNotification(`房间创建成功！房间号：${msg.data.room_id}`, 'success');
-          break;
         case 'player_joined':
           addNotification(`${msg.data.name} 加入了房间`, 'info');
           break;
@@ -190,10 +163,6 @@ export default function useWebSocket() {
           break;
         case 'vote_requested':
           // No global notification, progress shown inline in day phase UI
-          break;
-        case 'new_game':
-          setGameInfo(null);
-          addNotification(msg.data.message, 'info');
           break;
         case 'left_room':
           setRoomState(null);
@@ -273,7 +242,6 @@ export default function useWebSocket() {
     actionPending,
     playerId,
     roomState,
-    roomList,
     gameInfo,
     notifications,
     screenShake,

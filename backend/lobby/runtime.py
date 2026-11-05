@@ -45,6 +45,8 @@ class CheeseRuntime:
     async def detach(self, data):
         room_id = data['id']
         game = self.manager.rooms.pop(room_id, None)
+        from main import forget_room_save
+        await forget_room_save(room_id)
         players = set(data['members'])
         if game:
             players.update(game.players)
@@ -53,7 +55,10 @@ class CheeseRuntime:
             self.player_map.pop(pid, None)
             socket = self.sockets.pop(pid, None)
             if socket:
-                await socket.close(code=1000)
+                try:
+                    await socket.close(code=1000)
+                except RuntimeError:
+                    pass
             await self.store.remove_player_room(pid)
         await self.store.delete_room(room_id)
 
@@ -87,9 +92,14 @@ class HoldemRuntime:
 
     async def detach(self, data):
         room_id = data['id']
-        sockets = holdem_connections.rooms.pop(room_id, {})
+        sockets = dict(holdem_connections.rooms.get(room_id, {}))
+        for player_id in sockets:
+            holdem_connections.disconnect(room_id, player_id)
         for socket in sockets.values():
-            await socket.close(code=1000)
+            try:
+                await socket.close(code=1000)
+            except RuntimeError:
+                pass
         await delete_holdem(room_id)
 
     async def reset_presence(self, room_id):

@@ -20,6 +20,10 @@ RUN npm run build
 FROM ${NGINX_IMAGE} AS frontend
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY lobby-web/ /usr/share/nginx/html/
+RUN find /usr/share/nginx/html/assets -maxdepth 1 -type f \
+      ! -name '*-indigo-v1.webp' ! -name 'party-touch-indigo-v1.png' -delete && \
+    rm -rf /usr/share/nginx/html/vendor && \
+    rm -f /usr/share/nginx/html/assets/avatars/avatar-*.svg
 COPY bluff-web/ /usr/share/nginx/html/bluff/
 COPY --from=cheese-build /app/dist/ /usr/share/nginx/html/cheese/
 COPY --from=holdem-build /app/build/ /usr/share/nginx/html/holdem/

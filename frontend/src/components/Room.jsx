@@ -2,8 +2,8 @@ import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useState, useEffect } from 'react';
 import {
-  Copy, LogOut, Check, Eye, Vote, Users, Settings, Crown,
-  RotateCcw, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6, UserPlus, Hand
+  Copy, LogOut, Check, Eye, Vote, Users, Crown,
+  Dice1, Dice2, Dice3, Dice4, Dice5, Dice6, UserPlus, Hand
 } from 'lucide-react';
 
 const DICE_ICONS = [null, Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
@@ -239,13 +239,7 @@ export default function Room({ ws }) {
     choose('vote', targetId, '投票给这位玩家');
   };
 
-  const handleNewGame = () => {
-    send('new_game', {});
-  };
-
-  const handleLeave = () => {
-    send('leave_room', {});
-  };
+  const handleLeave = () => { window.location.assign('/'); };
 
   const isMeThief = gameInfo?.role === 'thief';
   const isMeAccomplice = gameInfo?.role === 'accomplice';
@@ -326,41 +320,6 @@ export default function Room({ ws }) {
       </div>
 
       }
-      {/* Room Settings (creator only, waiting phase) */}
-      {phase === 'waiting' && isCreator && !embedded && (
-        <div className="glass-card p-4">
-          <div className="text-sm text-white/50 mb-3 flex items-center gap-1">
-            <Settings size={14} /> 房间设置（房主）
-          </div>
-          <div className="flex flex-wrap gap-3 items-center">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={roomState.thief_see_all_dice}
-                onChange={(e) => send('update_room_settings', { thief_see_all_dice: e.target.checked })}
-                className="accent-cheese-400"
-              />
-              <span className="text-white/70">👁 大盗可见所有点数</span>
-            </label>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-white/70">🎲 骰子面数</span>
-              <select
-                value={roomState.max_dice || 6}
-                onChange={(e) => send('update_room_settings', { max_dice: parseInt(e.target.value) })}
-                className="bg-white/10 text-white rounded px-2 py-1 text-sm border border-white/20"
-              >
-                {[6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={roomState.outsiders?.includes('dodobird') || false}
-                onChange={(e) => send('update_room_settings', { outsider_dodobird: e.target.checked })} className="accent-cheese-400" />
-              <span className="text-white/70">🐦 呆呆鸟</span>
-            </label>
-          </div>
-        </div>
-      )}
-
       {/* Spectator Banner */}
       {isSpectator && (
         <div className="glass-card p-4 border-purple-500/30 text-center">
@@ -699,9 +658,9 @@ export default function Room({ ws }) {
         )}
 
         {phase === 'result' && isCreator && !embedded && (
-          <button onClick={handleNewGame} className="btn-primary">
+          <button onClick={handleLeave} className="btn-primary">
             <span className="flex items-center gap-2">
-              <RotateCcw size={16} /> 再来一局
+              <LogOut size={16} /> 返回房间
             </span>
           </button>
         )}

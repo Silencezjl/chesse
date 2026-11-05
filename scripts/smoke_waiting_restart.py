@@ -9,7 +9,7 @@ import subprocess
 import time
 import uuid
 import websockets
-from smoke_lobby import Client, req, WS_BASE
+from smoke_lobby import Client, req, WS_BASE, identity, connect
 from waiting_client import configure_and_ready
 
 CONTAINER = 'chesse-bluff-test-backend-1'
@@ -17,7 +17,7 @@ CONTAINER = 'chesse-bluff-test-backend-1'
 async def main():
     if os.environ.get('BLUFF_RESTART_CONTAINER') != CONTAINER or ':18089' not in WS_BASE:
         raise SystemExit('Requires BLUFF_RESTART_CONTAINER=chesse-bluff-test-backend-1 and LOBBY_URL on 18089')
-    ids=['waiting_'+uuid.uuid4().hex[:10] for _ in range(2)]
+    ids=[identity() for _ in range(2)]
     rid=(await req('/lobby/rooms',{'player_id':ids[0],'name':'自动开局测试','avatar':'🐭','game_id':'holdem'}))['id']
     await req(f'/lobby/rooms/{rid}/join',{'player_id':ids[1],'name':'朋友','avatar':'🐱'})
     clients=[];games=[]
@@ -25,7 +25,7 @@ async def main():
         for c in clients:await c.close()
         clients.clear()
         for pid in ids:
-            c=Client(await websockets.connect(f'{WS_BASE}/lobby/rooms/{rid}/ws/{pid}'))
+            c=Client(await connect(f'/lobby/rooms/{rid}/ws/{pid}', pid))
             await c.wait('room_state');clients.append(c)
     async def state():return await req(f'/lobby/rooms/{rid}?player_id={ids[0]}')
     async def ready_all():
@@ -46,7 +46,7 @@ async def main():
         await asyncio.sleep(3.2)
         assert (await state())['stage']=='waiting'
         # The newest tab replaces the previous connection without marking the player offline.
-        duplicate=Client(await websockets.connect(f'{WS_BASE}/lobby/rooms/{rid}/ws/{ids[1]}'))
+        duplicate=Client(await connect(f'/lobby/rooms/{rid}/ws/{ids[1]}', ids[1]))
         await duplicate.wait('room_state');await asyncio.sleep(.1)
         assert (await state())['members'][ids[1]]['connected']
         await clients[1].close();clients[1]=duplicate
@@ -61,17 +61,17 @@ async def main():
         assert all(not p['ready'] for p in r['members'].values())
         print('PASS: cancel, settings invalidation, duplicate tab, restart cancels countdown',flush=True)
         await configure_and_ready(req,rid,ids[0],'holdem',ids)
-        late='late_'+uuid.uuid4().hex[:8]
+        late=identity()
         joined=await req(f'/lobby/rooms/{rid}/join',{'player_id':late,'name':'迟到玩家','avatar':'🐸'})
         assert late in joined['pending_member_ids'] and late not in joined['seats'] and late not in joined['session_members']
         for pid in ids:
-            c=Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{rid}/{pid}'));games.append(c)
+            c=Client(await connect(f'/holdem-ws/{rid}/{pid}', pid));games.append(c)
         snapshot=(await games[0].wait('room_state'))['room']
         await restart()
         for c in games:await c.close()
         games.clear();await connect_lobby()
         for pid in ids:
-            c=Client(await websockets.connect(f'{WS_BASE}/holdem-ws/{rid}/{pid}'));games.append(c)
+            c=Client(await connect(f'/holdem-ws/{rid}/{pid}', pid));games.append(c)
         after=(await games[0].wait('room_state'))['room']
         recovered=await state();assert late in recovered['pending_member_ids'] and late not in recovered['session_members']
         assert after['hand']==snapshot['hand'] and after['hand_number']==snapshot['hand_number']==1

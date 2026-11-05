@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import useWebSocket from './hooks/useWebSocket';
-import Lobby from './components/Lobby';
 import Room from './components/Room';
 import Notifications from './components/Notifications';
 
@@ -47,7 +46,7 @@ export default function App() {
         {roomState ? (
           <Room ws={ws} />
         ) : (
-          <Lobby ws={ws} />
+          <div className="p-4 text-center">正在连接游戏…</div>
         )}
       </main>
 

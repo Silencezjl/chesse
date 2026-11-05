@@ -3,7 +3,6 @@ import Avatar from '../components/Avatar';
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
-import { leaveRoom } from '../api';
 import { Room } from '../types';
 import SeatGrid from '../components/SeatGrid';
 import PlayerCards from '../components/PlayerCards';
@@ -70,12 +69,9 @@ export default function RoomPage() {
       window.parent.postMessage({ type: 'return_to_lobby' }, window.location.origin);
       return;
     }
-    if (roomId && playerId) {
-      try { await leaveRoom(roomId, playerId); } catch {}
-    }
     setRoomId(null);
     navigate('/');
-  }, [roomId, playerId, setRoomId, navigate]);
+  }, [setRoomId, navigate]);
 
   // Track settlement proposal for win animation
   useEffect(() => {

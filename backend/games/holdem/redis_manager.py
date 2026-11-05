@@ -55,18 +55,3 @@ async def delete_room(room_id: str):
     pipe.srem(_rooms_list_key(), room_id)
     await pipe.execute()
 
-
-async def list_room_ids() -> list[str]:
-    r = await get_redis()
-    return list(await r.smembers(_rooms_list_key()))
-
-
-async def list_rooms() -> list[Room]:
-    ids = await list_room_ids()
-    rooms = []
-    for rid in ids:
-        room = await get_room(rid)
-        if room:
-            rooms.append(room)
-    return rooms
-

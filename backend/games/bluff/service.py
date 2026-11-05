@@ -31,10 +31,7 @@ async def save(state):
 
 async def broadcast(state):
     for pid, ws in list(sockets.get(state['id'], {}).items()):
-        try:
-            await ws.send_json({'type': 'state', 'data': engine.view(state, pid)})
-        except Exception:
-            logger.debug('Failed to send bluff state to %s', pid)
+        lobby().queue_state(ws, {'type': 'state', 'data': engine.view(state, pid)})
 
 
 def cancel_timer(room_id):
@@ -91,7 +88,10 @@ class BluffRuntime:
         cancel_timer(room_id)
         old = sockets.pop(room_id, {})
         for ws in old.values():
-            await ws.close(code=1000)
+            try:
+                await ws.close(code=1000)
+            except (RuntimeError, WebSocketDisconnect):
+                pass
         await lobby().db().delete(PREFIX + room_id)
 
     async def reset_presence(self, room_id):
@@ -116,6 +116,9 @@ class BluffRuntime:
 @router.websocket('/bluff-ws/{room_id}/{player_id}')
 async def game_socket(ws: WebSocket, room_id: str, player_id: str):
     api = lobby()
+    if not await api.socket_authorized(ws, player_id):
+        await ws.close(code=4403)
+        return
     try:
         room = await api.load(room_id)
     except Exception:
@@ -139,7 +142,7 @@ async def game_socket(ws: WebSocket, room_id: str, player_id: str):
             if expired:
                 await broadcast(state)
             else:
-                await ws.send_json({'type': 'state', 'data': engine.view(state, player_id)})
+                api.queue_state(ws, {'type': 'state', 'data': engine.view(state, player_id)})
         while True:
             message = await ws.receive_json()
             if not isinstance(message, dict):
@@ -148,6 +151,8 @@ async def game_socket(ws: WebSocket, room_id: str, player_id: str):
             if sockets.get(room_id, {}).get(player_id) is not ws:
                 return
             async with api.locks[room_id]:
+                if sockets.get(room_id, {}).get(player_id) is not ws:
+                    return
                 room = await api.load(room_id)
                 state = await load(room_id)
                 if not state or room.data['game_id'] != 'bluff' or state.get('generation') != room.data['session_id']:

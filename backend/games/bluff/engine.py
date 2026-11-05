@@ -69,7 +69,10 @@ def presence(state, members, now=None, *, restarting=False):
     # On a restart, the last persisted remaining time is the most recent checkpoint.
     if not restarting:
         advance_time(state, now)
-    state['members'] = deepcopy(members)
+    state['members'] = {
+        player_id: deepcopy(members.get(player_id, {**member, 'connected': False}))
+        for player_id, member in state['members'].items()
+    }
     paused = not online(state)
     if state['phase'] == 'viewing':
         if paused and not state['paused']:

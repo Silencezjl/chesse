@@ -11,8 +11,7 @@ Game industry pattern: in-memory hot state + Redis persistent snapshots.
 import orjson
 import os
 import logging
-import asyncio
-from collections import defaultdict
+from lobby.locks import RoomLocks
 from typing import Optional
 
 import redis.asyncio as redis
@@ -33,7 +32,7 @@ class StateStore:
 
     def __init__(self):
         self._redis: Optional[redis.Redis] = None
-        self._room_locks = defaultdict(asyncio.Lock)
+        self._room_locks = RoomLocks()
 
     async def connect(self):
         """Connect to Redis with optimized connection pool."""

@@ -54,6 +54,22 @@ class BluffTest(unittest.TestCase):
         self.assertEqual(s['remaining'],4.5);self.assertTrue(s['paused'])
         engine.act(s,'p0','terminate',now=501)
         self.assertCountEqual(engine.view(s,'spectator')['winners'],s['players'])
+
+    def test_finished_game_keeps_departed_player_for_results(self):
+        s = self.state()
+        engine.act(s, 'p0', 'terminate')
+        members = deepcopy(s['members'])
+        members.pop('p1')
+        engine.presence(s, members)
+        self.assertFalse(s['members']['p1']['connected'])
+        self.assertIn('p1', engine.view(s, 'p0')['members'])
+
+    def test_presence_does_not_add_candidates_to_session_members(self):
+        s = self.state()
+        members = deepcopy(s['members'])
+        members['candidate'] = {'name': '候场', 'avatar': '🐭', 'connected': True}
+        engine.presence(s, members)
+        self.assertNotIn('candidate', s['members'])
     def test_boundaries_and_privacy(self):
         for n in (3,9):
             s=self.state(n);self.assertEqual(len(s['players']),n);self.assertEqual(Counter(s['roles'].values())['honest'],1)
