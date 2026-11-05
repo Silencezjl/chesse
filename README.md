@@ -143,3 +143,5 @@ LOBBY_URL=http://localhost:18089 python scripts/smoke_empty_rooms.py
 
 大厅顶部和游戏外层工具栏显示客户端到服务器的往返延迟（RTT，ms），每 5 秒测量。首页使用不缓存的 `GET /lobby/ping`；入房后使用公共房间 WebSocket 的 `ping/pong`，通过请求 ID 配对。低于 100ms 为绿色，100–299ms 为黄色，300ms 及以上为红色；尚未测量、超时、断线、后台暂停分别展示状态文字，不保留旧数值。延迟更新只更新标签，不重建游戏 iframe 或正在编辑的资料表单。
 切后台只暂停测速，仍保留原有的 15 秒房间心跳。
+
+顶部四角按钮支持进入/退出浏览器原生全屏，向支持的浏览器请求隐藏导航栏；目标是稳定的根文档，房间状态刷新、规则切换及游戏 iframe 更新不会主动退出全屏。必须由用户点击触发；刷新、系统手势或浏览器切换可能退出，不自动抢占屏幕。支持能力通过 API 检测，不支持时展示说明。全屏 API 不能保证所有手机系统行为；Android Chrome 的实体设备验收仍需实际测试，iPhone 浏览器支持随系统而异。实现参考 [MDN requestFullscreen](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen)。

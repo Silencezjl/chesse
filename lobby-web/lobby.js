@@ -15,6 +15,35 @@ const rejectedNames = new Set();
 const randomNickname = () => PlayerNames.random(draftName,[...Object.entries(room?.members || {}).filter(([id])=>id!==playerId).map(([,p])=>p.name),...rejectedNames,...(sheet==='join'&&targetRoom?.owner_name?[targetRoom.owner_name]:[])]);
 
 
+let fullscreenPending=false;
+const fullscreenElement=()=>document.fullscreenElement || document.webkitFullscreenElement;
+const canFullscreen=()=>Boolean((document.documentElement.requestFullscreen && document.fullscreenEnabled!==false) || (document.documentElement.webkitRequestFullscreen && document.webkitFullscreenEnabled!==false));
+const fullscreenIcon=active=>`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${active?'M8 3v5H3m13-5v5h5M3 16h5v5m8 0v-5h5':'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5'}"/></svg>`;
+function fullscreenButton(context='header'){
+  const active=Boolean(fullscreenElement()),label=active?'退出全屏':canFullscreen()?'进入全屏':'全屏说明';
+  return `<button type="button" class="secondary fullscreen-toggle" id="fullscreen-${context}" data-fullscreen aria-label="${label}" title="${label}" aria-pressed="${active}" ${fullscreenPending?'disabled':''}>${fullscreenIcon(active)}</button>`;
+}
+function paintFullscreen(){
+  const active=Boolean(fullscreenElement()),label=active?'退出全屏':canFullscreen()?'进入全屏':'全屏说明';
+  root.querySelectorAll('[data-fullscreen]').forEach(button=>{button.setAttribute('aria-label',label);button.title=label;button.setAttribute('aria-pressed',String(active));button.disabled=fullscreenPending || Boolean(busy&&(sheet||pendingKick));button.innerHTML=fullscreenIcon(active);});
+}
+async function toggleFullscreen(){
+  if(fullscreenPending)return;
+  if(!fullscreenElement()&&!canFullscreen()){openSheet('fullscreen-info');return;}
+  fullscreenPending=true;paintFullscreen();
+  try{
+    if(fullscreenElement()){
+      const exit=document.exitFullscreen || document.webkitExitFullscreen;await exit.call(document);
+    }else if(document.documentElement.requestFullscreen){
+      // Request synchronously from the click, before any network or render work.
+      await document.documentElement.requestFullscreen({navigationUI:'hide'});
+    }else await document.documentElement.webkitRequestFullscreen();
+  }catch{notify('浏览器未允许全屏，请再次点击；也可以继续使用普通模式。');}
+  finally{fullscreenPending=false;paintFullscreen();}
+}
+document.addEventListener('fullscreenchange',paintFullscreen);
+document.addEventListener('webkitfullscreenchange',paintFullscreen);
+
 let latency=null, latencyState='measuring', pingSerial=0, pendingPing=null, httpPing=null;
 const pingClock=()=>performance.now();
 function latencyLabel(){return latency===null?({measuring:'测量中',offline:'未连接',timeout:'超时',paused:'已暂停'}[latencyState] || '未连接'):`${latency}ms`;}
@@ -257,6 +286,7 @@ function sheetView() {
   else if(sheet==='games'){title='今晚玩什么？';content=`<div class="stack">${games.map(g=>`<button class="secondary game-choice" data-game="${g.id}">${gameIcon(g)}<span>${esc(g.title)}<small>${g.minimum}–${g.maximum} 人</small></span></button>`).join('')}</div>`;}
   else if(sheet==='password'){title='房间密码';content=`<form id="password-form" class="stack"><p class="muted">${room.has_password?'已设置密码。留空保存可移除密码。':'当前无需密码即可加入。'}已有成员重连不受影响。</p><label>新密码<input type="password" id="password" autocomplete="new-password" maxlength="20" value="${esc(password)}" placeholder="留空则无需密码"></label><button>保存密码</button></form>`;}
   else if(sheet==='rules'){title='游戏规则';content=rulesView();}
+  else if(sheet==='fullscreen-info'){title='全屏游玩';content='<div class="stack"><p>当前浏览器不支持网页全屏，页面会按浏览器可用高度显示。</p><p class="muted">Android 手机可使用 Chrome 并点击全屏按钮。iPhone 上的浏览器支持因系统版本而异。</p><p class="muted">网页无法固定浏览器地址栏，也不能阻止系统退出全屏。刷新页面或系统退出后，需要再次点击全屏。</p></div>';}
   else if(sheet==='member'){
     const p=room.members[targetRoom];if(!p)return '';
     title=p.name;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
@@ -287,7 +317,7 @@ function render() {
   const pageScroll={x:window.scrollX,y:window.scrollY};
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions">${latencyView()}<button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions">${latencyView()}${fullscreenButton()}<button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><div class="game-toolbar-actions">${fullscreenButton('game')}<button class="secondary" id="show-room">${room.stage==='finished'?'返回房间':'查看房间'}</button></div></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
@@ -295,10 +325,11 @@ function render() {
   const nextAvatars=root.querySelector('.avatars');if(nextAvatars)nextAvatars.scrollTop=avatarScroll;
   if(saved){const el=document.getElementById(saved.id);if(el){el.focus({preventScroll:true});if(el.setSelectionRange&&saved.start!==null&&el.type!=='number')el.setSelectionRange(saved.start,saved.end);}}
   if(window.scrollX!==pageScroll.x || window.scrollY!==pageScroll.y)window.scrollTo(pageScroll.x,pageScroll.y);
-  updateCountdown();paintLatency();
+  updateCountdown();paintLatency();paintFullscreen();
 }
 function bindEvents() {
   const bind=(id,event,fn)=>document.getElementById(id)?.addEventListener(event,fn);
+  root.querySelectorAll('[data-fullscreen]').forEach(button=>button.onclick=toggleFullscreen);
   bind('brand','click',()=>{if(room){conceal();showGame=false;render();}});
   bind('my-profile','click',()=>{if(room?.stage==='playing'){notify('本局结束后可以修改资料');return;}openSheet('profile');});
   bind('create-room','click',()=>beginCreate());bind('refresh-list','click',refreshList);

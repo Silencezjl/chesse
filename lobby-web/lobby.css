@@ -67,3 +67,13 @@ body{background:radial-gradient(ellipse at 85% 0%,#eae4ff 0,transparent 400px),v
 .latency-badge[data-level=fair]{color:#916022;background:#fff3df}
 .latency-badge[data-level=bad]{color:#a34747;background:#fbecec}
 .game-toolbar .latency-badge{font-size:10px;line-height:16px;padding:1px 6px;margin-top:3px}
+
+.fullscreen-toggle{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:44px;min-width:44px;min-height:44px;padding:0;border-radius:12px}
+.fullscreen-toggle[aria-pressed=true]{background:var(--mobile-accent-soft);border-color:var(--mobile-accent)}
+.game-toolbar-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.game-toolbar-actions .fullscreen-toggle{padding:0}
+.game-toolbar-title{flex:1}
+.game-toolbar-title>div{min-width:0}
+.game-toolbar-title strong,.game-toolbar-title small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html:fullscreen{background:#f6f5fc;overflow:auto}
+html:-webkit-full-screen{background:#f6f5fc;overflow:auto}

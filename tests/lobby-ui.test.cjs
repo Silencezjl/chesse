@@ -281,3 +281,23 @@ test('background tabs pause latency sampling while retaining the original room h
   await a.intervals.find(fn=>fn.name==='probeLatency')();assert.equal(socket.sent.length,count+1);
  }finally{a.dom.window.close();}
 });
+
+test('fullscreen targets the stable document, survives room updates and preserves the game iframe',async()=>{
+ const r=initial();r.stage='playing';r.session_id='fullscreen-game';r.session_members=['p0','p1'];const a=await app(r);try{
+  let active=null,requests=0;Object.defineProperty(a.w.document,'fullscreenElement',{get:()=>active,configurable:true});Object.defineProperty(a.w.document,'fullscreenEnabled',{value:true,configurable:true});
+  a.w.document.documentElement.requestFullscreen=async options=>{assert.equal(options.navigationUI,'hide');requests++;active=a.w.document.documentElement;a.w.document.dispatchEvent(new a.w.Event('fullscreenchange'));};
+  a.w.document.exitFullscreen=async()=>{active=null;a.w.document.dispatchEvent(new a.w.Event('fullscreenchange'));};
+  const frame=a.w.document.querySelector('iframe');a.w.document.querySelector('#fullscreen-game').click();await tick();
+  assert.equal(requests,1);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-pressed'),'true');assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-label'),'退出全屏');
+  a.setRoom({...r,revision:2});assert.equal(active,a.w.document.documentElement);assert.equal(a.w.document.querySelector('iframe'),frame);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-pressed'),'true');
+  a.w.document.querySelector('#fullscreen-game').click();await tick();assert.equal(active,null);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-label'),'进入全屏');assert.equal(a.w.document.querySelector('iframe'),frame);
+  assert.equal(requests,1);
+ }finally{a.dom.window.close();}
+});
+test('unsupported fullscreen opens guidance and denied requests keep the page usable',async()=>{
+ const a=await app(null);try{
+  a.w.document.querySelector('#fullscreen-header').click();assert.match(a.w.document.querySelector('[role=dialog]').textContent,/当前浏览器不支持网页全屏/);a.w.document.querySelector('#close-sheet').click();
+  a.w.document.documentElement.requestFullscreen=async()=>{throw new Error('Denied');};
+  a.w.document.querySelector('#fullscreen-header').click();await tick();assert.match(a.w.document.querySelector('#toast').textContent,/未允许全屏/);assert.equal(a.w.document.querySelector('#fullscreen-header').disabled,false);assert.equal(a.w.document.querySelector('#fullscreen-header').getAttribute('aria-pressed'),'false');assert.ok(a.w.document.querySelector('#create-room'));
+ }finally{a.dom.window.close();}
+});
