@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React from 'react';
 import { RoomListItem } from '../types';
@@ -24,7 +25,7 @@ export default function JoinRoomList({ rooms, loading, onJoin, onRefresh }: Prop
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xl"><Avatar value={r.owner_emoji} /></span>
-                <span className="font-semibold text-white">{r.owner_name}</span>
+                <span className="font-semibold text-white"><NameText value={r.owner_name} /></span>
                 <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-400">#{r.id}</span>
               </div>
               <div className="flex gap-3 text-xs text-slate-400">

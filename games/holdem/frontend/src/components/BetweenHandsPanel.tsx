@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import React from 'react';
 import { Room } from '../types';
 
@@ -47,10 +48,10 @@ export default function BetweenHandsPanel({
             )}
             {Object.values(room.players).filter(p => p.seat >= 0 && !p.ready).length > 0 && (
               <p className="text-[11px] text-slate-500">
-                等待: {Object.values(room.players)
+                等待: <NameText value={Object.values(room.players)
                   .filter(p => p.seat >= 0 && !p.ready)
                   .map(p => p.name)
-                  .join(', ')}
+                  .join(', ')} />
               </p>
             )}
           </div>

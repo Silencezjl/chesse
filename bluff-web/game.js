@@ -7,7 +7,7 @@ const phaseName = {choose:'选题',prepare:'确认准备',viewing:'限时看答�
 let connected=false, sending=false, pendingTarget=null, privateAllowed=true, reconnectTimer=null;
 let socket, state=null, error='', showRole=false, lastRound=null, clockStart=0, clockValue=0;
 function playerName(id){const p=state?.members?.[id];return p ? p.name : id;}
-function playerLabel(id){const p=state?.members?.[id];return p ? `${GameAvatars.html(p.avatar)} ${esc(p.name)}` : esc(id);}
+function playerLabel(id){const p=state?.members?.[id];return p ? `${GameAvatars.html(p.avatar)} ${PlayerNames.html(p.name)}` : esc(id);}
 function reportConnection(){if(window.parent!==window)window.parent.postMessage({type:'game_connection',connected},location.origin);}
 function send(type,data={}){
  if(sending)return;
@@ -50,9 +50,9 @@ function render(){
  if(state.phase==='viewing')content+=`<section class="card"><h2>限时查看答案</h2><p class="muted">其余玩家请勿偷看别人的屏幕。</p><div class="big" id="countdown">${Math.ceil(remaining())} 秒</div>${state.answer&&privateAllowed&&!document.hidden&&remaining()>0?`<div class="answer" id="answer"><strong>仅你可见的答案</strong><p>${esc(state.answer)}</p></div>`:'<p class="muted">请等待查看时间结束。</p>'}</section>`;
  if(state.phase==='discussion')content+=`<section class="card"><h2>放下手机，面对面讨论</h2><p class="muted">请面对面发言和提问。想想必须先质疑一人，再指认老实人。</p>${judge?(!state.challenge_made?`<strong>请选择质疑对象</strong>${buttonsForTargets('challenge')}`:`<p>已质疑 ${playerLabel(state.my_challenge)}</p><strong>请选择你认为的老实人</strong>${buttonsForTargets('guess')}`):`<p class="muted">${state.challenge_made?'想想正在指认老实人。':'等待想想选择质疑对象。'}</p>`}</section>`;
  if(state.phase==='reveal')content+=`<section class="card"><h2>本轮揭晓</h2>${history()}${playerId===state.judge||owner?`<button id="next" ${state.paused?'disabled':''}>${state.round===state.total_rounds?'查看最终结果':'下一轮'}</button>`:'<p class="muted">等待想想或房主进入下一轮。</p>'}</section>`;
- if(state.phase==='finished')content+=`<section class="card"><h2>${state.terminated?'本局已提前结束':'🏆 最终结果'}</h2><p>最高分：${state.winners.map(p=>esc(playerName(p))).join('、')}</p>${scoreboard()}<p class="muted">请返回公共房间切换游戏。</p></section>${state.history?.length?`<section class="card"><h2>已完成回合</h2>${history()}</section>`:''}`;
+ if(state.phase==='finished')content+=`<section class="card"><h2>${state.terminated?'本局已提前结束':'🏆 最终结果'}</h2><p>最高分：${state.winners.map(p=>PlayerNames.html(playerName(p))).join('、')}</p>${scoreboard()}<p class="muted">请返回公共房间切换游戏。</p></section>${state.history?.length?`<section class="card"><h2>已完成回合</h2>${history()}</section>`:''}`;
  if(state.phase!=='finished')content+=`<details class="card" id="scores"><summary>查看当前分数与管理</summary>${scoreboard()}${owner?'<button class="danger" id="terminate">提前结束本局</button>':''}</details>`;
- if(pendingTarget)content+=`<div class="modal-backdrop"><section class="confirm-card" role="dialog" aria-modal="true" aria-label="确认操作"><h2>${pendingTarget.action==='terminate'?'提前结束本局？':pendingTarget.action==='challenge'?'确认质疑这位玩家？':'确认指认这位玩家为老实人？'}</h2><p>${pendingTarget.action==='terminate'?'未完成回合不会计分，已完成结果保留。':esc(playerName(pendingTarget.id))}</p><button id="confirm-target">确认提交</button><button class="secondary" id="cancel-target">重新选择</button></section></div>`;
+ if(pendingTarget)content+=`<div class="modal-backdrop"><section class="confirm-card" role="dialog" aria-modal="true" aria-label="确认操作"><h2>${pendingTarget.action==='terminate'?'提前结束本局？':pendingTarget.action==='challenge'?'确认质疑这位玩家？':'确认指认这位玩家为老实人？'}</h2><p>${pendingTarget.action==='terminate'?'未完成回合不会计分，已完成结果保留。':PlayerNames.html(playerName(pendingTarget.id))}</p><button id="confirm-target">确认提交</button><button class="secondary" id="cancel-target">重新选择</button></section></div>`;
  root.innerHTML=content;
  if(pendingTarget)[...root.children].forEach(el=>{if(!el.classList.contains('modal-backdrop'))el.inert=true;});
  openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});

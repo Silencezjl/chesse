@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useState, useEffect } from 'react';
 import {
@@ -93,7 +94,7 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
       <div className="text-3xl md:text-4xl"><Avatar value={player.avatar} /></div>
       <div className="text-sm font-medium truncate max-w-full flex items-center gap-1">
         {index != null && <span className="text-white/40">{index}.</span>}
-        {player.name}
+        <NameText value={player.name} />
         {isCreator && <Crown size={12} className="text-cheese-400 flex-shrink-0" />}
       </div>
 
@@ -399,7 +400,7 @@ export default function Room({ ws }) {
               {/* Night message from server (includes group/cheese/thief info) */}
               {gameInfo.message && (
                 <div className={`text-sm mt-1 whitespace-pre-line ${infoTextClass}`}>
-                  {gameInfo.message}
+                  <NameText value={gameInfo.message} />
                 </div>
               )}
 
@@ -411,7 +412,7 @@ export default function Room({ ws }) {
                     <span key={m.id} className={`text-xs px-2 py-0.5 rounded-full ${
                       m.is_thief ? groupThiefBadgeClass : groupMouseBadgeClass
                     }`}>
-                      <Avatar value={m.avatar} /> {m.name} {m.is_thief ? '(大盗!)' : ''}
+                      <Avatar value={m.avatar} /> <NameText value={m.name} /> {m.is_thief ? '(大盗!)' : ''}
                     </span>
                   ))}
                 </div>
@@ -420,30 +421,30 @@ export default function Room({ ws }) {
               {/* Peek result */}
               {gameInfo.has_peeked && gameInfo.peek_target_name && (
                 <div className={`text-sm mt-1 ${infoTextClass}`}>
-                  🔍 你偷看了 {gameInfo.peek_target_name} 的骰子: <strong>{gameInfo.peek_result}</strong> 点
+                  🔍 你偷看了 <NameText value={gameInfo.peek_target_name} /> 的骰子: <strong>{gameInfo.peek_result}</strong> 点
                 </div>
               )}
               {/* Also support old peek format */}
               {gameInfo.peek && !gameInfo.has_peeked && (
                 <div className={`text-sm mt-1 ${infoTextClass}`}>
-                  🔍 你偷看了 {gameInfo.peek.target_name} 的骰子: <strong>{gameInfo.peek.dice}</strong> 点
+                  🔍 你偷看了 <NameText value={gameInfo.peek.target_name} /> 的骰子: <strong>{gameInfo.peek.dice}</strong> 点
                 </div>
               )}
 
               {/* Accomplice info */}
               {isMeAccomplice && gameInfo.thief_name && (
                 <div className={`text-sm mt-1 ${infoTextClass}`}>
-                  大盗是 {gameInfo.thief_name}，骰子 {gameInfo.thief_dice} 点
+                  大盗是 <NameText value={gameInfo.thief_name} />，骰子 {gameInfo.thief_dice} 点
                 </div>
               )}
               {isMeThief && gameInfo.accomplice_name && (
                 <div className={`text-sm mt-1 ${infoTextClass}`}>
-                  你的共犯: {gameInfo.accomplice_name}
+                  你的共犯: <NameText value={gameInfo.accomplice_name} />
                 </div>
               )}
               {isMeDodobird && gameInfo.accomplice_name && (
                 <div className={`text-sm mt-1 ${infoTextClass}`}>
-                  你选的假共犯: {gameInfo.accomplice_name}
+                  你选的假共犯: <NameText value={gameInfo.accomplice_name} />
                 </div>
               )}
             </div>
@@ -460,7 +461,7 @@ export default function Room({ ws }) {
                   return (
                     <div key={pid} className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${infoChipClass}`}>
                       <span><Avatar value={p?.avatar} /></span>
-                      <span className={infoMutedClass}>{p?.name}</span>
+                      <span className={infoMutedClass}><NameText value={p?.name} /></span>
                       <span className={`font-bold ${diceValueClass}`}>{dice}</span>
                     </div>
                   );
@@ -481,16 +482,16 @@ export default function Room({ ws }) {
           <div className="text-white/60 mb-2">{roomState.winner === 'dodobird' ? '呆呆鸟成功让自己被投出！' : roomState.winner === 'mouse' ? '成功找出了奶酪大盗！' : '投票结束。'}</div>
           {gameInfo?.result && (
             <div className="text-sm text-white/50">
-              奶酪大盗: {gameInfo.result.thief_name}
-              {gameInfo.result.accomplice_name
+              奶酪大盗: <NameText value={gameInfo.result.thief_name} />
+              <NameText value={gameInfo.result.accomplice_name
                 ? ` | 共犯: ${gameInfo.result.accomplice_name}`
-                : ''}
-              {gameInfo.result.dodobird_name && ` | 🐦 呆呆鸟: ${gameInfo.result.dodobird_name}`}
-              {gameInfo.result.dodobird_accomplice_name && (
+                : ''} />
+              <NameText value={gameInfo.result.dodobird_name ? ` | 🐦 呆呆鸟: ${gameInfo.result.dodobird_name}` : ''} />
+              <NameText value={gameInfo.result.dodobird_accomplice_name ? (
                 gameInfo.result.dodobird_accomplice_is_real
                   ? ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（与大盗同选→真共犯）`
                   : ` | 🐦🤝 假共犯=${gameInfo.result.dodobird_accomplice_name}（非真共犯）`
-              )}
+              ) : ''} />
             </div>
           )}
         </div>
@@ -539,7 +540,7 @@ export default function Room({ ws }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-lg leading-none"><Avatar value={entry.avatar} /></span>
-                        <span className="font-medium break-all">{entry.name}</span>
+                        <span className="font-medium break-all"><NameText value={entry.name} /></span>
                         {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
                         {entry.outsider_label && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">{entry.outsider_label}</span>
@@ -551,7 +552,7 @@ export default function Room({ ws }) {
 
                       <div className="space-y-0.5">
                         {entry.actions.map((action, i) => (
-                          <div key={i} className="text-sm text-white/70">{action}</div>
+                          <div key={i} className="text-sm text-white/70"><NameText value={action} /></div>
                         ))}
                         {entry.actions.length === 0 && (
                           <div className="text-sm text-white/30">无特殊行动</div>
@@ -620,14 +621,14 @@ export default function Room({ ws }) {
           <div className="flex flex-wrap gap-2">
             {spectatorList.map(s => (
               <span key={s.id} className={`text-xs px-2 py-1 rounded-full bg-white/10 ${!s.connected ? 'opacity-40' : ''}`}>
-                <Avatar value={s.avatar} /> {s.name}
+                <Avatar value={s.avatar} /> <NameText value={s.name} />
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p><Avatar value={players[confirmation.target]?.avatar} /> {players[confirmation.target]?.name}</p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
+      {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p><Avatar value={players[confirmation.target]?.avatar} /> <NameText value={players[confirmation.target]?.name} /></p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
       {/* Action Buttons */}
       <fieldset disabled={!ws.connected || ws.actionPending} className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
         {isSpectator && phase !== 'waiting' && (

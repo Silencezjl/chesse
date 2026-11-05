@@ -1,3 +1,4 @@
+import NameText from '../components/NameText';
 import Avatar from '../components/Avatar';
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -355,7 +356,7 @@ export default function RoomPage() {
           {/* My chips info */}
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-400">
-              <Avatar value={myPlayer.emoji} /> {myPlayer.name}
+              <Avatar value={myPlayer.emoji} /> <NameText value={myPlayer.name} />
             </span>
             <div className="flex items-center gap-2">
               {myPlayer.total_rebuys > 0 && (

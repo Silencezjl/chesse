@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import React, { useState, useEffect } from 'react';
 import { Room } from '../types';
 import { snapToChip } from './ChipDisplay';
@@ -31,7 +32,7 @@ export default function ActionPanel({ room, playerId, onAction, disabled = false
     return <p className="text-center text-slate-300 py-2">{player.status === 'folded' ? '你已弃牌，可以继续观看本手' : '你已全下，等待本手结算'}</p>;
   }
   if (hand.current_player_id !== playerId) {
-    return <p className="text-center text-slate-300 py-2">等待 {room.players[hand.current_player_id || '']?.name || '其他玩家'} 行动</p>;
+    return <p className="text-center text-slate-300 py-2">等待 <NameText value={room.players[hand.current_player_id || '']?.name || '其他玩家'} /> 行动</p>;
   }
   const currentBet = hand.current_bet;
   const call = Math.max(0, currentBet - player.current_bet);

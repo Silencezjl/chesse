@@ -1,8 +1,9 @@
+import NameInput from '../components/NameInput';
 import Avatar from '../components/Avatar';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
-import { createRoom, joinRoom, fetchRooms, getRandomProfile, checkPlayerRoom } from '../api';
+import { createRoom, joinRoom, fetchRooms, checkPlayerRoom } from '../api';
 import { RoomListItem } from '../types';
 import CreateRoomForm from '../components/CreateRoomForm';
 import JoinRoomList from '../components/JoinRoomList';
@@ -27,15 +28,9 @@ export default function HomePage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  const initProfile = useCallback(async () => {
-    try {
-      const p = await getRandomProfile();
-      setName(p.name);
-      setEmoji(p.emoji);
-    } catch {
-      setName('Player_' + Math.floor(Math.random() * 99));
-      setEmoji('😀');
-    }
+  const initProfile = useCallback(() => {
+    setName(window.PlayerNames?.random() || '摸鱼小熊#07');
+    setEmoji(EMOJIS[Math.floor(Math.random()*EMOJIS.length)]);
   }, []);
 
   // Check if player is already in a room → auto-redirect
@@ -144,10 +139,10 @@ export default function HomePage() {
             >
               <Avatar value={emoji} size={40} />
             </button>
-            <input
+            <NameInput
               className="flex-1 bg-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={setName}
               placeholder="你的昵称"
               maxLength={20}
             />

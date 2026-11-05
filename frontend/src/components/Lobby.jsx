@@ -1,3 +1,5 @@
+import NameInput from './NameInput';
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useState, useEffect } from 'react';
 import { Plus, LogIn, Shuffle, ChevronRight, Eye, EyeOff, RefreshCw, Users } from 'lucide-react';
@@ -26,7 +28,7 @@ export default function Lobby({ ws }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
-    setName(NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 99));
+    setName(window.PlayerNames?.random() || '摸鱼小熊#07');
     setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)]);
   };
 
@@ -150,10 +152,10 @@ export default function Lobby({ ws }) {
               <Avatar value={avatar} size={48} />
             </div>
             <div className="flex-1">
-              <input
+              <NameInput
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={setName}
                 className="input-field mb-2"
                 placeholder="输入昵称"
                 maxLength={12}
@@ -178,7 +180,7 @@ export default function Lobby({ ws }) {
               {NAMES.map((n) => (
                 <button
                   key={n}
-                  onClick={() => setName(n + Math.floor(Math.random() * 99))}
+                  onClick={() => setName(n + '#' + String(Math.floor(Math.random() * 100)).padStart(2,'0'))}
                   className="text-xs px-2.5 py-1 rounded-full bg-white/10 hover:bg-cheese-500/30 hover:text-cheese-300 transition-all"
                 >
                   {n}
@@ -345,7 +347,7 @@ export default function Lobby({ ws }) {
                     >
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium flex items-center gap-2">
-                          {room.creator_name} 的房间
+                          <NameText value={room.creator_name} /> 的房间
                           <span className={`text-xs px-1.5 py-0.5 rounded-full ${phaseInfo.color}`}>{phaseInfo.text}</span>
                         </div>
                         <div className="text-xs text-white/40 flex items-center gap-2 mt-0.5 flex-wrap">

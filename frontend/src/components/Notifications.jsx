@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import React from 'react';
 import { AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 
@@ -26,7 +27,7 @@ export default function Notifications({ notifications }) {
             className={`animate-fade-in flex items-center gap-2 px-4 py-3 rounded-xl border text-white text-sm shadow-lg ${COLORS[n.type]}`}
           >
             <Icon size={16} className="shrink-0" />
-            <span>{n.text}</span>
+            <span><NameText value={n.text} /></span>
           </div>
         );
       })}

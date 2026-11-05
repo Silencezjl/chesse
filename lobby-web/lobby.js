@@ -5,29 +5,13 @@ const uid = () => globalThis.crypto?.randomUUID?.() || `p_${Date.now()}_${Math.r
 const playerId = localStorage.getItem('lobby_player_id') || uid();
 localStorage.setItem('lobby_player_id', playerId);
 const avatars = GameAvatars.ids;
-let name = localStorage.getItem('lobby_name') || '', avatar = GameAvatars.normalize(localStorage.getItem('lobby_avatar'));
+let name = PlayerNames.text(localStorage.getItem('lobby_name')), avatar = GameAvatars.normalize(localStorage.getItem('lobby_avatar'));
 let games = [], rooms = [], room = null, error = '', listError = '', busy = false, booting = true;
 let socket = null, reconnect = null, connected = false, superseded = false, showGame = true, mountedSession = '';
 let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
 let draftName = '', draftAvatar = '', password = '', selectedGame = '', targetRoom = null, gameConnected = false;
 let listing = false, lastFocus = null, restartChoose = false;
-const nicknamePool = Object.freeze([
-  "摸鱼小熊", "奶茶海獭", "脆皮企鹅", "发呆树懒", "飞奔小鸭", "偷吃仓鼠", "路过熊猫", "快乐水豚", "困困考拉", "暴走兔子",
-  "芝士狐狸", "饭团小狗", "布丁小猫", "糯米团子", "芋泥啵啵", "草莓泡芙", "蜜桃乌龙", "西瓜汽水", "可乐加冰", "冰糖雪梨",
-  "咸鱼翻身", "土豆队长", "番茄大王", "黄瓜骑士", "南瓜法师", "玉米超人", "香菜侦探", "蒜头军师", "豆芽选手", "洋葱学霸",
-  "饼干警长", "面包侠", "客串高手", "运气选手", "随缘玩家", "快乐躺平", "椅子冠军", "沙发土豆", "饭点战神", "夜宵达人",
-  "橘子汽船", "柠檬飞艇", "葡萄星球", "香蕉月亮", "菠萝宇航员", "荔枝骑手", "杨梅船长", "蓝莓水手", "椰子机长", "芒果探险家",
-  "迷路蘑菇", "散步云朵", "打盹月亮", "星星打嗝", "彩虹溜号", "太阳赖床", "流星摸鱼", "银河干饭", "微风串门", "雨点蹦迪",
-  "戏精小鹿", "社恐刺猬", "话痨鹦鹉", "佛系海豹", "傲娇松鼠", "佛脚袋鼠", "机智浣熊", "呆萌河马", "慢热乌龟", "冲浪鲸鱼",
-  "一把就睡", "再玩一局", "先吃口饭", "等我想想", "我有妙计", "全凭直觉", "今天手气", "牌桌锦鲤", "懵圈选手", "气氛担当",
-  "锅巴同学", "蛋挞老师", "麻薯学长", "酸奶学姐", "米糕同桌", "汤圆班长", "烧麦主任", "煎饺助教", "春卷校长", "馄饨教授",
-  "沙雕海鸥", "拖鞋大侠", "被窝富翁", "奶盖侦探", "薯条刺客", "薯片勇士", "螺蛳粉侠", "烤串诗人", "火锅精灵", "珍珠奶龙",
-]);
-function randomNickname() {
-  let next = nicknamePool[Math.floor(Math.random()*nicknamePool.length)] + String(Math.floor(Math.random()*100)).padStart(2,'0');
-  if(next===draftName) next=next.slice(0,-2)+String((Number(next.slice(-2))+1)%100).padStart(2,'0');
-  return next;
-}
+const randomNickname = () => PlayerNames.random(draftName);
 
 
 async function api(path, data) {
@@ -99,7 +83,7 @@ function updateRoom(next) {
   if(pending())showGame=false;
   serverOffset=next.server_time*1000-Date.now();
   localStorage.setItem('lobby_room_id',next.id);
-  const me=next.members[playerId];name=me.name;avatar=GameAvatars.normalize(me.avatar);saveProfile();
+  const me=next.members[playerId];name=PlayerNames.text(me.name);avatar=GameAvatars.normalize(me.avatar);saveProfile();
   const key=`${room.id}:${room.game_id}:${room.revision}`;
   if(draftKey!==key){settingsDraft={...room.options};draftKey=key;}
   render();
@@ -132,7 +116,7 @@ async function beginJoin(id) {
 }
 async function submitProfile() {
   const nextName=draftName.trim();
-  if(!nextName || nextName.length>12)throw Error('请输入 1–12 个字符的昵称');
+  if(!PlayerNames.parts(nextName).base.trim() || nextName.length>12)throw Error('请输入 1–12 个字符的昵称');
   const values={player_id:playerId,name:nextName,avatar:draftAvatar};
   if(sheet==='profile'){
     if(room)await roomAction('profile',values);
@@ -151,7 +135,7 @@ function homeView() {
   return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room">＋ 创建房间</button></section>
   <div class="section-head"><h2>房间列表 <small>${rooms.length} 间</small></h2><button class="secondary" id="refresh-list">刷新</button></div>
   ${listError?`<div class="error" role="alert">${esc(listError)} · 点击刷新重试</div>`:''}
-  <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${GameAvatars.html(r.owner_avatar)}</div><div class="room-summary"><h3>${esc(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<div class="empty-state" role="status"><p class="muted">暂无房间，创建后会显示在这里。</p></div>`}</div>
+  <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${GameAvatars.html(r.owner_avatar)}</div><div class="room-summary"><h3>${PlayerNames.html(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<div class="empty-state" role="status"><p class="muted">暂无房间，创建后会显示在这里。</p></div>`}</div>
   <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}">${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
 }
 function settingsView() {
@@ -162,7 +146,7 @@ function settingsView() {
 function seatView(pid,index) {
   if(!pid)return `<div class="seat empty"><span>＋</span><small>等待朋友入座</small></div>`;
   const p=room.members[pid];
-  return `<button class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}" data-member="${esc(pid)}"><span class="face">${GameAvatars.html(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${esc(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small></button>`;
+  return `<button class="seat ${p.ready?'ready':''} ${p.connected?'':'offline'}" data-member="${esc(pid)}"><span class="face">${GameAvatars.html(p.avatar)}</span>${pid===room.owner_id?'<span class="crown" title="房主">♛</span>':''}<strong>${PlayerNames.html(p.name)}${pid===playerId?' · 我':''}</strong><small>${!p.connected?'暂时离线':p.ready?'✓ 已准备':'等待准备'}</small></button>`;
 }
 function actionView() {
   const me=room.members[playerId],g=info(room.game_id),seated=room.seats.includes(playerId);
@@ -182,19 +166,19 @@ function actionView() {
     subtitle=room.stage==='countdown'?'取消准备可以暂停开局':participants.some(p=>!p.connected)?'等待玩家连接恢复':unready.length?`等待 ${unready.slice(0,2).map(pid=>room.members[pid].name).join('、')}${unready.length>2?` 等 ${unready.length} 人`:''}`:'马上开局';
     button=`${room.stage==='countdown'?'<span class="countdown-number" id="countdown-number"></span>':''}<button id="ready" class="${me.ready?'secondary':''}">${me.ready?'取消准备':'准备好了'}</button>`;
   }
-  return `<div class="action-bar"><div class="action-inner"><div><p>${esc(title)}</p><small>${esc(subtitle)}</small></div><div class="row">${button}</div></div></div>`;
+  return `<div class="action-bar"><div class="action-inner"><div><p>${PlayerNames.html(title)}</p><small>${PlayerNames.html(subtitle)}</small></div><div class="row">${button}</div></div></div>`;
 }
 function roomView() {
   const g=info(room.game_id),observers=Object.keys(room.members).filter(p=>!room.seats.includes(p));
-  return `<div class="room-head"><div><h1>${esc(roomTitle(room))}</h1><div class="status"><span class="dot ${connected?'':'off'}"></span>${connected?stageName(room.stage):superseded?'当前标签页已暂停':'连接恢复中…'} · ${Object.keys(room.members).length}/12 人 ${room.has_password?'· 🔒':''}</div></div><button class="secondary" id="room-menu">更多</button></div>
+  return `<div class="room-head"><div><h1>${PlayerNames.html(roomTitle(room))}</h1><div class="status"><span class="dot ${connected?'':'off'}"></span>${connected?stageName(room.stage):superseded?'当前标签页已暂停':'连接恢复中…'} · ${Object.keys(room.members).length}/12 人 ${room.has_password?'· 🔒':''}</div></div><button class="secondary" id="room-menu">更多</button></div>
   ${room.start_error?`<div class="error">${esc(room.start_error)}</div>`:''}
   ${pending()?'<div class="notice">你已加入候场。本局信息暂不开放，结束后可以入座。</div>':''}
   <section class="card table-card"><div class="row"><div class="game-heading">${gameIcon(g,'game-icon room-game-icon')}<div><h2>${esc(g?.title || '今晚玩什么？')}</h2><p class="muted">${g?`${g.minimum}–${g.maximum} 人参与`:'先集合，再决定也没关系'}</p></div></div>${isOwner()&&editable()?'<button class="link" id="game-picker">选游戏</button>':''}</div>
   <div class="section-head"><h3>参与玩家 <small>${room.seats.length}</small></h3>${room.seats.includes(playerId)&&editable()?`<button class="link" data-seat="${playerId}" data-seated="false">这局先旁观</button>`:''}</div>
   <div class="seats">${Array.from({length:Math.max(room.seats.length,g?.minimum || 1)},(_,i)=>seatView(room.seats[i],i)).join('')}</div>
-  ${observers.length?`<div class="section-head"><h3>旁观与候场 <small>${observers.length}</small></h3></div><div class="spectators">${observers.map(pid=>`<button class="spectator secondary" data-member="${esc(pid)}">${GameAvatars.html(room.members[pid].avatar)} ${esc(room.members[pid].name)}${room.pending_member_ids?.includes(pid)?' · 候场':''}</button>`).join('')}</div>`:''}
+  ${observers.length?`<div class="section-head"><h3>旁观与候场 <small>${observers.length}</small></h3></div><div class="spectators">${observers.map(pid=>`<button class="spectator secondary" data-member="${esc(pid)}">${GameAvatars.html(room.members[pid].avatar)} ${PlayerNames.html(room.members[pid].name)}${room.pending_member_ids?.includes(pid)?' · 候场':''}</button>`).join('')}</div>`:''}
   </section><div class="room-tools"><button class="secondary" id="open-settings" ${!g?'disabled':''}>本局设置</button><button class="secondary" id="open-rules">玩法说明</button></div>
-  <p class="room-hint muted">朋友打开大厅，找到“${esc(roomTitle(room))}”就能加入。<br>所有人离线 15 分钟后，房间自动解散。</p>${actionView()}`;
+  <p class="room-hint muted">朋友打开大厅，找到“${PlayerNames.html(roomTitle(room))}”就能加入。<br>所有人离线 15 分钟后，房间自动解散。</p>${actionView()}`;
 }
 function sheetView() {
   if(!sheet && !pendingKick)return '';
@@ -203,7 +187,7 @@ function sheetView() {
   else if(['create','join','profile'].includes(sheet)){
     title=sheet==='create'?'开一桌，等朋友':sheet==='join'?`加入${roomTitle(targetRoom)}`:'我的资料';
     content=`<form id="profile-form" class="profile-form">${sheet==='join'&&targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}
-    <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
+    <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><div class="nickname-editor"><input id="name" autocomplete="nickname" maxlength="${PlayerNames.parts(draftName).tag?9:12}" value="${esc(PlayerNames.parts(draftName).base)}" placeholder="朋友怎么称呼你？" required><span class="name-tag" id="nickname-tag">${esc(PlayerNames.parts(draftName).tag)}</span></div><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
     ${sheet==='create'?`<label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label>`:''}
     ${sheet==='create'||sheet==='join'&&targetRoom.has_password?`<label>${sheet==='create'?'房间密码（选填）':'房间密码'}<input id="password" type="password" autocomplete="${sheet==='create'?'new-password':'off'}" maxlength="20" value="${esc(password)}" placeholder="${sheet==='create'?'留空，朋友可直接加入':'请输入房主设置的密码'}" ${sheet==='join'?'required':''}></label>`:''}
     <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button>${busy?'正在保存…':sheet==='create'?'创建房间':sheet==='join'?'加入房间':'保存资料'}</button></form>`;
@@ -215,8 +199,8 @@ function sheetView() {
     const p=room.members[targetRoom];if(!p)return '';
     title=p.name;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
     if(isOwner()&&editable()&&targetRoom!==playerId)content+=`<button class="secondary" data-seat="${esc(targetRoom)}" data-seated="${!room.seats.includes(targetRoom)}">${room.seats.includes(targetRoom)?'移至旁观':'安排入座'}</button><button class="secondary" data-transfer="${esc(targetRoom)}" ${!p.connected?'disabled':''}>转交房主</button><button class="danger" data-kick="${esc(targetRoom)}">移出房间</button>`;
-  }else{title='房间';content=`<p class="muted">${room.members[room.owner_id].connected?'房主：'+esc(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
-  return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${esc(title)}</h2><button class="secondary" id="close-sheet" aria-label="关闭">✕</button></div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
+  }else{title='房间';content=`<p class="muted">${room.members[room.owner_id].connected?'房主：'+PlayerNames.html(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
+  return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${PlayerNames.html(title)}</h2><button class="secondary" id="close-sheet" aria-label="关闭">✕</button></div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
 }
 function mountGame() {
   const active=room&&room.session_id&&inSession()&&['playing','finished'].includes(room.stage);
@@ -240,7 +224,7 @@ function render() {
   const pageScroll={x:window.scrollX,y:window.scrollY};
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${esc(name || '设置我的资料')}</span></button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
@@ -258,8 +242,8 @@ function bindEvents() {
   root.querySelectorAll('[data-create]').forEach(b=>b.onclick=()=>beginCreate(b.dataset.create));
   root.querySelectorAll('[data-join]').forEach(b=>b.onclick=()=>action(()=>beginJoin(b.dataset.join)));
   bind('close-sheet','click',closeSheet);bind('cancel-kick','click',closeSheet);
-  bind('random-name','click',()=>{draftName=randomNickname();document.getElementById('name').value=draftName;});
-  bind('name','input',e=>draftName=e.target.value);bind('password','input',e=>password=e.target.value);
+  bind('random-name','click',()=>{draftName=randomNickname();const parts=PlayerNames.parts(draftName),input=document.getElementById('name');input.value=parts.base;input.maxLength=9;document.getElementById('nickname-tag').textContent=parts.tag;});
+  bind('name','input',e=>draftName=e.target.value+PlayerNames.parts(draftName).tag);bind('password','input',e=>password=e.target.value);
   bind('create-game','change',e=>selectedGame=e.target.value);
   root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{
     draftAvatar=b.dataset.avatar;

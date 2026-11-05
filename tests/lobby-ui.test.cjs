@@ -30,7 +30,7 @@ async function app(start=initial(), directory=[]) {
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
-  w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
+  w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/player-names.js','utf8'));w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
   return {w,dom,calls,sockets,intervals,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }
 test('room updates preserve an unfinished settings edit and input focus',async()=>{
@@ -156,14 +156,31 @@ test('random nicknames offer 100 distinct bases and two digits without saving un
       let call=0;a.w.Math.random=()=>call++%2===0?(i+.1)/100:0;
       a.w.document.querySelector('#random-name').click();
       const value=a.w.document.querySelector('#name').value;
-      assert.match(value,/^.+00$/);assert.ok(value.length<=12);names.add(value.slice(0,-2));
+      assert.equal(a.w.document.querySelector('#nickname-tag').textContent,'#00');assert.ok(value);assert.ok(value.length<=12);names.add(value);
     }
     assert.equal(names.size,100);assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');
     assert.equal(a.calls.filter(c=>c.url.endsWith('/profile')).length,0);
-    const draft=a.w.document.querySelector('#name').value;a.setRoom(initial());
-    assert.equal(a.w.document.querySelector('#name').value,draft);
+    const base=a.w.document.querySelector('#name').value,draft=base+a.w.document.querySelector('#nickname-tag').textContent;a.setRoom(initial());
+    assert.equal(a.w.document.querySelector('#name').value,base);
     a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
     assert.equal(a.w.localStorage.getItem('lobby_name'),draft);
     assert.equal(a.calls.find(c=>c.url.endsWith('/profile')).body.name,draft);
+  }finally{a.dom.window.close();}
+});
+test('nickname tags are escaped, consistently styled, and compatible with previous random names',async()=>{
+  const r=initial();r.members.p0.name='摸鱼小熊07';r.members.p1.name='朋友#42';const a=await app(r);try{
+    assert.equal(a.w.PlayerNames.text('摸鱼小熊07'),'摸鱼小熊#07');
+    assert.equal(a.w.PlayerNames.text('自定义2026'),'自定义2026');
+    assert.equal(a.w.PlayerNames.html('<img src=x onerror=alert(1)>#09'),'&lt;img src=x onerror=alert(1)&gt;<span class="name-tag">#09</span>');
+    assert.equal(a.w.PlayerNames.html('用户#123'),'用户#123');
+    assert.equal(a.w.document.querySelector('#my-profile .name-tag').textContent,'#07');
+    assert.equal(a.w.document.querySelector('.room-head .name-tag').textContent,'#07');
+    assert.equal(a.w.document.querySelector('[data-member=p1] .name-tag').textContent,'#42');
+    a.w.document.querySelector('#my-profile').click();
+    assert.equal(a.w.document.querySelector('#name').value,'摸鱼小熊');
+    assert.equal(a.w.document.querySelector('#nickname-tag').textContent,'#07');
+    const input=a.w.document.querySelector('#name');input.value='新昵称';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+    assert.equal(a.w.localStorage.getItem('lobby_name'),'新昵称#07');
   }finally{a.dom.window.close();}
 });

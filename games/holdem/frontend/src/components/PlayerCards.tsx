@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -233,7 +234,7 @@ function PlayerRow({ player: p, room, playerId, hand }: PlayerRowProps) {
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-slate-500">#{p.seat + 1}</span>
-            <span className="text-xs font-medium truncate">{p.name}</span>
+            <span className="text-xs font-medium truncate"><NameText value={p.name} /></span>
             {isMe && <span className="text-[9px] text-blue-400 flex-shrink-0">(我)</span>}
           </div>
           {role && (

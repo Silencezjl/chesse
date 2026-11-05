@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useState, useEffect, useRef } from 'react';
 import { Room } from '../types';
@@ -62,7 +63,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
         <div className="text-center">
           <h3 className="text-lg font-bold text-yellow-400">🏆 结算确认</h3>
           <p className="text-xs text-slate-400 mt-1">
-            <Avatar value={proposer?.emoji} /> {proposer?.name} 发起了结算方案
+            <Avatar value={proposer?.emoji} /> <NameText value={proposer?.name} /> 发起了结算方案
           </p>
         </div>
 
@@ -84,7 +85,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
                   const share = Math.floor(pot.amount / winners.length);
                   return (
                     <span key={wid} className="text-xs bg-yellow-900/40 text-yellow-300 px-2 py-0.5 rounded">
-                      <Avatar value={w.emoji} /> {w.name} (+{share})
+                      <Avatar value={w.emoji} /> <NameText value={w.name} /> (+{share})
                     </span>
                   );
                 })}
@@ -172,7 +173,7 @@ export default function SettlementPanel({ room, playerId, onPropose, onConfirm, 
                   } ${isSinglePlayer ? 'opacity-80 cursor-default' : ''}`}
                 >
                   <span><Avatar value={p.emoji} /></span>
-                  <span className="text-xs truncate">{p.name}</span>
+                  <span className="text-xs truncate"><NameText value={p.name} /></span>
                   {isSelected && <span className="ml-auto text-yellow-400">✓</span>}
                 </button>
               );

@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React from 'react';
 import { Room } from '../types';
@@ -60,7 +61,7 @@ export default function SeatGrid({ room, playerId, onSit, onStand }: Props) {
                   <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800 ${player.is_connected ? 'bg-green-400' : 'bg-red-500'}`} />
                 </div>
                 <span className="text-xs font-medium mt-1 truncate max-w-full">
-                  {player.name}
+                  <NameText value={player.name} />
                 </span>
                 <span className="text-[10px] text-green-400 mt-0.5">
                   {player.chips}

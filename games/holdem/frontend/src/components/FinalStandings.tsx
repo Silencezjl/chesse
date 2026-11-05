@@ -1,3 +1,4 @@
+import NameText from './NameText';
 import Avatar from './Avatar';
 import React, { useState } from 'react';
 import { Standing, Room } from '../types';
@@ -137,7 +138,7 @@ export default function FinalStandings({
               <span className="text-xl"><Avatar value={s.player_emoji} /></span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-white">{s.player_name}</span>
+                  <span className="text-sm font-medium text-white"><NameText value={s.player_name} /></span>
                   {isSelected && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${getGroupColor(gId, 'badge')}`}>
                       {GROUP_NAMES[gId - 1]}
