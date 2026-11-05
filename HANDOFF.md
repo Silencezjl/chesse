@@ -2,6 +2,8 @@
 
 统一大厅现已接入奶酪大盗、Holdem 和瞎掰王；详细命令见 `README.md`。身份使用服务端签发的 HttpOnly Cookie，旧设备 ID 无法认领房间。以下历史记录中的旧身份流程仅供追溯。
 
+当前正式环境（2026-11-06 起）为上海 `root@111.229.79.183`，目录 `/opt/chesse`，Compose 项目 `chesse-shanghai`，公网端口 `8000`。成都旧节点已退役，后续发布以 README 的“线上部署”为准。
+
 - 公共层在 `backend/lobby/`：`rooms.py` 为房间模型，`games.py` 为游戏初始化与切换规则，`runtime.py` 管理游戏快照与连接，`api.py` 提供公共房间 HTTP/WebSocket 接口。`lobby-web/` 是统一大厅，游戏界面在同源 iframe 内运行。
 - 奶酪游戏代码保留在 `backend/`、`frontend/`；Holdem 来源及提交见 `games/holdem/UPSTREAM.txt`。两套实时协议独立，公共层管理玩家和游戏选择。
 - 公共房间、奶酪和 Holdem 使用 `lobby:room:v1:`、`lobby:game:cheese:`、`lobby:game:holdem:` 等独立 Redis 命名空间；Compose 使用新的 `lobby_redis_data` 卷，不迁移或清除旧游戏数据。

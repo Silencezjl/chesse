@@ -2,6 +2,26 @@
 
 在同一个公共房间中，与朋友游玩奶酪大盗、Holdem 线下筹码管理和瞎掰王。房主在一局结束后切换游戏；切换到 Holdem 会开启新的筹码局。
 
+## 线上部署
+
+自 2026-11-06 起，正式环境统一部署到上海机器，后续发布使用以下目标。
+
+- SSH 使用 `ssh root@111.229.79.183`。
+- 项目目录为 `/opt/chesse`，Compose 项目名为 `chesse-shanghai`。
+- 公网入口为 `http://111.229.79.183:8000`。
+- 服务器 `.env` 设置 `COMPOSE_PROJECT_NAME=chesse-shanghai` 和 `LOBBY_PORT=8000`。
+- 成都旧节点 `aliyun-chengdu-head`（Tailscale 当前名称 `aliyun-headscale`，`100.64.0.1`）已退役，后续发布使用上海节点。
+
+优先在开发机构建并验证镜像，再传送到上海服务器。当前运行镜像为 `chesse-shanghai-backend:latest`、`chesse-shanghai-frontend:latest`，Redis 使用 `docker.m.daocloud.io/redis:7-alpine`。镜像导入并更新源码后，在服务器执行：
+
+```bash
+cd /opt/chesse
+docker compose up -d --no-build
+docker compose ps
+```
+
+上海实例使用独立的 `chesse-shanghai_lobby_redis_data` 数据卷。发布时保留现有卷，后端保持单 worker。开发验证继续使用 dify 的 18088/18089 隔离实例。
+
 ## 启动
 
 需要 Docker 和 Docker Compose：
