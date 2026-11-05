@@ -154,3 +154,5 @@ LOBBY_URL=http://localhost:18089 python scripts/smoke_empty_rooms.py
 PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome \
 LOBBY_URL=http://localhost:18088 node scripts/smoke_scroll.cjs
 ```
+
+右上角快捷控件采用统一圆角容器：信号图标与延迟数字、全屏按钮、圆形动物头像。头像不显示可见昵称，仍通过无障碍标签保留资料说明，点击继续编辑昵称和头像；触控按钮至少 44px。

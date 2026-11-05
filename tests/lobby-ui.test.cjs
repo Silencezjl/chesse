@@ -124,7 +124,7 @@ test('header keeps the logo without a wordmark and renders the saved profile as 
   const a=await app();try{
     const brand=a.w.document.querySelector('#brand');assert.equal(brand.textContent.trim(),'');assert.equal(brand.getAttribute('aria-label'),'游戏大厅');
     const image=a.w.document.querySelector('#my-profile img');assert.equal(image.getAttribute('src'),'/assets/avatars/animals-v1/animal-01.png');
-    assert.equal(a.w.document.querySelector('#my-profile').textContent,'房主');
+    assert.equal(a.w.document.querySelector('#my-profile').textContent.trim(),'');assert.match(a.w.document.querySelector('#my-profile').getAttribute('aria-label'),/房主/);
   }finally{a.dom.window.close();}
 });
 test('avatar URLs stay local for legacy values, supported IDs and untrusted values',async()=>{
@@ -175,7 +175,7 @@ test('names have no suffix, legacy names remain compatible, and input preserves 
     assert.equal(a.w.PlayerNames.text('自定义2026'),'自定义2026');
     assert.equal(a.w.PlayerNames.html('<img src=x onerror=alert(1)>#09'),'&lt;img src=x onerror=alert(1)&gt;');
     assert.equal(a.w.PlayerNames.html('用户#123'),'用户#123');
-    assert.equal(a.w.document.querySelector('#my-profile').textContent,'摸鱼小熊');
+    assert.equal(a.w.document.querySelector('#my-profile').textContent.trim(),'');assert.match(a.w.document.querySelector('#my-profile').getAttribute('aria-label'),/摸鱼小熊/);
     assert.equal(a.w.document.querySelector('[data-member=p1] strong').textContent,'朋友');
     a.w.document.querySelector('#my-profile').click();
     assert.equal(a.w.document.querySelector('#name').value,'摸鱼小熊');assert.equal(a.w.document.querySelector('#name').maxLength,12);
@@ -242,32 +242,32 @@ test('room ping correlates replies, updates in place and clears stale samples af
  const a=await app();try{
   const socket=a.sockets.at(-1),ping=()=>socket.sent.filter(m=>m.type==='ping').at(-1),reply=id=>socket.onmessage({data:JSON.stringify({type:'pong',id})});
   assert.match(a.w.document.querySelector('.latency-label').textContent,/测量中/);
-  const first=ping();a.advance(37);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 37ms');
+  const first=ping();a.advance(37);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'37ms');
   a.w.document.querySelector('#my-profile').click();const input=a.w.document.querySelector('#name'),grid=a.w.document.querySelector('.avatars');input.value='未保存草稿';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));input.focus();grid.scrollTop=120;
-  await a.intervals.find(fn=>fn.name==='probeLatency')();const second=ping();a.advance(280);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 37ms');reply(second.id);
-  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 280ms');assert.equal(a.w.document.querySelector('.latency-badge').dataset.level,'fair');
+  await a.intervals.find(fn=>fn.name==='probeLatency')();const second=ping();a.advance(280);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'37ms');reply(second.id);
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'280ms');assert.equal(a.w.document.querySelector('.latency-badge').dataset.level,'fair');
   assert.equal(a.w.document.querySelector('#name'),input);assert.equal(input.value,'未保存草稿');assert.equal(a.w.document.activeElement,input);assert.equal(grid.scrollTop,120);
   await a.intervals.find(fn=>fn.name==='probeLatency')();a.advance(10001);await a.intervals.find(fn=>fn.name==='probeLatency')();assert.match(a.w.document.querySelector('.latency-label').textContent,/超时/);reply(second.id);assert.match(a.w.document.querySelector('.latency-label').textContent,/超时/);
-  const current=ping();a.advance(12);reply(current.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 12ms');
+  const current=ping();a.advance(12);reply(current.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'12ms');
   socket.onclose({code:4001});reply(current.id);assert.match(a.w.document.querySelector('.latency-label').textContent,/未连接/);
  }finally{a.dom.window.close();}
 });
 test('HTTP ping measures a server response and late HTTP replies cannot replace room ping',async()=>{
  const a=await app(null);try{
-  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 1ms');
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'1ms');
   const original=a.w.fetch;let finish;
   a.w.fetch=(url,opts)=>url==='/lobby/ping'?new Promise(resolve=>finish=resolve):original(url,opts);
   const probe=a.intervals.find(fn=>fn.name==='probeLatency'),pending=probe();a.advance(125);finish({ok:true,json:async()=>({type:'pong'})});await pending;
-  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 125ms');
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'125ms');
   const stale=probe();a.w.document.querySelector('#create-room').click();await tick();await tick();
   const socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(40);socket.onmessage({data:JSON.stringify({type:'pong',id})});
-  finish({ok:true,json:async()=>({type:'pong'})});await stale;assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 40ms');
+  finish({ok:true,json:async()=>({type:'pong'})});await stale;assert.equal(a.w.document.querySelector('.latency-label').textContent,'40ms');
  }finally{a.dom.window.close();}
 });
 test('in-game toolbar shows server RTT without replacing the game iframe',async()=>{
  const r=initial();r.stage='playing';r.session_id='ping-session';r.session_members=['p0','p1'];const a=await app(r);try{
   const frame=a.w.document.querySelector('iframe'),socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(350);socket.onmessage({data:JSON.stringify({type:'pong',id})});
-  assert.equal(a.w.document.querySelector('.game-toolbar .latency-label').textContent,'延迟 350ms');assert.equal(a.w.document.querySelector('.game-toolbar .latency-badge').dataset.level,'bad');assert.equal(a.w.document.querySelector('iframe'),frame);
+  assert.equal(a.w.document.querySelector('.game-toolbar .latency-label').textContent,'350ms');assert.equal(a.w.document.querySelector('.game-toolbar .latency-badge').dataset.level,'bad');assert.equal(a.w.document.querySelector('iframe'),frame);
   a.w.dispatchEvent(new a.w.Event('offline'));assert.match(a.w.document.querySelector('.game-toolbar .latency-label').textContent,/未连接/);
  }finally{a.dom.window.close();}
 });

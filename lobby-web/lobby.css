@@ -82,3 +82,18 @@ html:-webkit-full-screen{background:#f6f5fc;overflow:auto}
 .has-action-bar:not(.game-mode) .shell{padding-bottom:calc(var(--action-bar-height,88px) + 16px)}
 html.game-viewport,html.sheet-open{overflow:hidden;overscroll-behavior-y:none}
 html.game-viewport{height:100%}
+
+/* Compact utility capsule: connection, fullscreen and avatar-only profile. */
+.top-actions{gap:3px;max-width:none;flex-shrink:0;padding:4px;border:1px solid #e7e1f4;border-radius:20px;background:#ffffffdc;box-shadow:0 3px 16px #4c378009}
+.top-divider{width:1px;height:18px;background:#e9e4f2;flex-shrink:0;margin:0 2px}
+.top-actions .latency-badge{min-width:64px;height:36px;justify-content:center;padding:0 6px 0 8px;gap:5px;font-size:11px;background:transparent;letter-spacing:.1px}
+.top-actions .latency-badge[data-level]{background:transparent}
+.latency-badge:before{display:none}
+.latency-signal{flex-shrink:0;opacity:.85}
+.fullscreen-toggle{border-color:#e7e1f4;background:#fff;color:#7a6c98;box-shadow:0 2px 6px #4c378006}
+.top-actions .fullscreen-toggle{border:0;box-shadow:none;background:transparent;border-radius:14px}
+.top-actions .fullscreen-toggle[aria-pressed=true]{color:#5945ce;background:#eeeafe}
+.top-actions .profile-chip{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;padding:4px;border:0;border-radius:50%;background:transparent;overflow:visible}
+.top-actions .profile-chip .user-avatar{width:34px;height:34px;padding:3px;border:1px solid #e0d7f4;background:#f0ebff;box-shadow:0 2px 5px #6550870c}
+.game-toolbar .latency-signal{width:11px;height:11px}
+@media(hover:hover){.top-actions .fullscreen-toggle:hover,.top-actions .profile-chip:hover{background:#f3effb}}
