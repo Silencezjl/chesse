@@ -58,3 +58,12 @@ body{background:radial-gradient(ellipse at 85% 0%,#eae4ff 0,transparent 400px),v
 .rules-content ul{margin:0;padding-left:20px}
 .rules-content li+li{margin-top:4px}
 .rules-settings{border-top:1px solid var(--line);padding-top:12px;font-size:12px}
+
+.top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;max-width:calc(100% - 60px)}
+.top-actions .profile-chip{flex:0 1 auto}
+.latency-badge{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;font-size:11px;font-weight:500;line-height:20px;padding:3px 7px;border-radius:20px;background:#eeedf3;color:#716b87;font-variant-numeric:tabular-nums}
+.latency-badge:before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.latency-badge[data-level=good]{color:#39735a;background:#eaf4ee}
+.latency-badge[data-level=fair]{color:#916022;background:#fff3df}
+.latency-badge[data-level=bad]{color:#a34747;background:#fbecec}
+.game-toolbar .latency-badge{font-size:10px;line-height:16px;padding:1px 6px;margin-top:3px}

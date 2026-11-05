@@ -7,12 +7,13 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const initial = () => ({id:'123456',owner_id:'p0',game_id:'cheese',options:{max_dice:6},stage:'waiting',seats:['p0','p1'],revision:1,session_id:null,session_members:[],server_time:Date.now()/1000,members:{p0:{name:'房主',avatar:'🐭',connected:true,ready:false},p1:{name:'朋友',avatar:'🦊',connected:true,ready:false}}});
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function app(start=initial(), directory=[], savedName='房主') {
-  let room=clone(start);const calls=[],sockets=[],intervals=[];
+  let room=clone(start),clock=1000;const calls=[],sockets=[],intervals=[];
   const dom=new JSDOM('<div id="app"></div><section id="game-shell" hidden></section><div id="toast"></div>',{url:'http://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
-  const w=dom.window;w.localStorage.setItem('lobby_player_id','p0');w.localStorage.setItem('lobby_name',savedName);
+  const w=dom.window;Object.defineProperty(w.performance,'now',{value:()=>clock});w.localStorage.setItem('lobby_player_id','p0');w.localStorage.setItem('lobby_name',savedName);
   w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   w.fetch=async(url,opts)=>{
     calls.push({url,body:opts?.body?JSON.parse(opts.body):undefined});
+    if(url==='/lobby/ping')return {ok:true,json:async()=>({type:'pong'})};
     if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',rules:[{title:'夜晚行动',items:['瞌睡鼠独自醒来可以偷看骰子。']},{title:'胜负判定',items:['投出大盗则瞌睡鼠获胜。']}],settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
     if(url==='/lobby/rooms'&&!opts?.body)return {ok:true,json:async()=>clone(directory)};
     if(url==='/lobby/rooms'&&opts?.body){const values=JSON.parse(opts.body);room=initial();room.game_id=values.game_id;room.stage=values.game_id?'waiting':'choosing';room.members.p0.name=values.name;room.members.p0.avatar=values.avatar;room.seats=['p0'];delete room.members.p1;}
@@ -26,13 +27,13 @@ async function app(start=initial(), directory=[], savedName='房主') {
   };
   class Socket {
     static OPEN=1;
-    constructor(){this.readyState=1;sockets.push(this);queueMicrotask(()=>{this.onopen?.();this.message(room);});}
-    send(){}
+    constructor(){this.sent=[];this.readyState=1;sockets.push(this);queueMicrotask(()=>{this.onopen?.();this.message(room);});}
+    send(value){this.sent.push(JSON.parse(value));}
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
   w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/player-names.js','utf8'));w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
-  return {w,dom,calls,sockets,intervals,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
+  return {w,dom,calls,sockets,intervals,advance:ms=>clock+=ms,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }
 test('room updates preserve an unfinished settings edit and input focus',async()=>{
   const a=await app();try{
@@ -234,5 +235,39 @@ test('waiting room shows full selected-game rules inline and keeps them in the r
 test('restoring an existing room recovers its profile without showing first-visit onboarding',async()=>{
  const a=await app(initial(),[],'');try{
   assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');assert.ok(a.w.document.querySelector('#ready'));assert.equal(a.w.document.querySelector('[role=dialog]'),null);
+ }finally{a.dom.window.close();}
+});
+
+test('room ping correlates replies, updates in place and clears stale samples after timeout or disconnect',async()=>{
+ const a=await app();try{
+  const socket=a.sockets.at(-1),ping=()=>socket.sent.filter(m=>m.type==='ping').at(-1),reply=id=>socket.onmessage({data:JSON.stringify({type:'pong',id})});
+  assert.match(a.w.document.querySelector('.latency-label').textContent,/测量中/);
+  const first=ping();a.advance(37);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 37ms');
+  a.w.document.querySelector('#my-profile').click();const input=a.w.document.querySelector('#name'),grid=a.w.document.querySelector('.avatars');input.value='未保存草稿';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));input.focus();grid.scrollTop=120;
+  await a.intervals.find(fn=>fn.name==='probeLatency')();const second=ping();a.advance(280);reply(first.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 37ms');reply(second.id);
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 280ms');assert.equal(a.w.document.querySelector('.latency-badge').dataset.level,'fair');
+  assert.equal(a.w.document.querySelector('#name'),input);assert.equal(input.value,'未保存草稿');assert.equal(a.w.document.activeElement,input);assert.equal(grid.scrollTop,120);
+  await a.intervals.find(fn=>fn.name==='probeLatency')();a.advance(10001);await a.intervals.find(fn=>fn.name==='probeLatency')();assert.match(a.w.document.querySelector('.latency-label').textContent,/超时/);reply(second.id);assert.match(a.w.document.querySelector('.latency-label').textContent,/超时/);
+  const current=ping();a.advance(12);reply(current.id);assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 12ms');
+  socket.onclose({code:4001});reply(current.id);assert.match(a.w.document.querySelector('.latency-label').textContent,/未连接/);
+ }finally{a.dom.window.close();}
+});
+test('HTTP ping measures a server response and late HTTP replies cannot replace room ping',async()=>{
+ const a=await app(null);try{
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 1ms');
+  const original=a.w.fetch;let finish;
+  a.w.fetch=(url,opts)=>url==='/lobby/ping'?new Promise(resolve=>finish=resolve):original(url,opts);
+  const probe=a.intervals.find(fn=>fn.name==='probeLatency'),pending=probe();a.advance(125);finish({ok:true,json:async()=>({type:'pong'})});await pending;
+  assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 125ms');
+  const stale=probe();a.w.document.querySelector('#create-room').click();await tick();await tick();
+  const socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(40);socket.onmessage({data:JSON.stringify({type:'pong',id})});
+  finish({ok:true,json:async()=>({type:'pong'})});await stale;assert.equal(a.w.document.querySelector('.latency-label').textContent,'延迟 40ms');
+ }finally{a.dom.window.close();}
+});
+test('in-game toolbar shows server RTT without replacing the game iframe',async()=>{
+ const r=initial();r.stage='playing';r.session_id='ping-session';r.session_members=['p0','p1'];const a=await app(r);try{
+  const frame=a.w.document.querySelector('iframe'),socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(350);socket.onmessage({data:JSON.stringify({type:'pong',id})});
+  assert.equal(a.w.document.querySelector('.game-toolbar .latency-label').textContent,'延迟 350ms');assert.equal(a.w.document.querySelector('.game-toolbar .latency-badge').dataset.level,'bad');assert.equal(a.w.document.querySelector('iframe'),frame);
+  a.w.dispatchEvent(new a.w.Event('offline'));assert.match(a.w.document.querySelector('.game-toolbar .latency-label').textContent,/未连接/);
  }finally{a.dom.window.close();}
 });

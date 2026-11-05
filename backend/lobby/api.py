@@ -7,6 +7,7 @@ import uuid
 from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
@@ -313,6 +314,11 @@ def schedule(room):
         countdowns[rid] = asyncio.create_task(finish_countdown(rid, c['token'], c['deadline']))
 
 
+@router.get('/ping')
+async def latency_ping():
+    return JSONResponse({'type':'pong'}, headers={'Cache-Control':'no-store'})
+
+
 @router.get('/games')
 async def games():
     return catalog()
@@ -585,7 +591,7 @@ async def room_socket(ws: WebSocket, room_id: str, player_id: str):
             if connections[room_id].get(player_id) is not ws:
                 break
             if message.get('type') == 'ping':
-                await ws.send_json({'type': 'pong'})
+                await ws.send_json({'type': 'pong', 'id': message.get('id')})
             elif message.get('type') == 'refresh':
                 async with locks[room_id]:
                     room = await load(room_id)

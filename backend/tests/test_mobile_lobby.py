@@ -168,3 +168,16 @@ class MobileLobbyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(isinstance(value,dict) for value in outcomes),1)
         self.assertEqual(sum(isinstance(value,HTTPException) for value in outcomes),1)
         self.assertEqual(len((await api.get_room(rid,'host'))['members']),3)
+
+    async def test_latency_ping_is_uncached_and_socket_pongs_echo_probe_id(self):
+        response=await api.latency_ping()
+        self.assertEqual(json.loads(response.body),{'type':'pong'})
+        self.assertEqual(response.headers['cache-control'],'no-store')
+        data=await self.create();rid=data['id']
+        from starlette.websockets import WebSocketDisconnect
+        ws=SimpleNamespace(accept=AsyncMock(),close=AsyncMock(),send_json=AsyncMock(),
+            receive_json=AsyncMock(side_effect=[{'type':'ping','id':42},{'type':'ping'},WebSocketDisconnect()]))
+        await api.room_socket(ws,rid,'host')
+        messages=[call.args[0] for call in ws.send_json.await_args_list]
+        self.assertIn({'type':'pong','id':42},messages)
+        self.assertIn({'type':'pong','id':None},messages)

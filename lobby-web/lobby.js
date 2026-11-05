@@ -15,6 +15,43 @@ const rejectedNames = new Set();
 const randomNickname = () => PlayerNames.random(draftName,[...Object.entries(room?.members || {}).filter(([id])=>id!==playerId).map(([,p])=>p.name),...rejectedNames,...(sheet==='join'&&targetRoom?.owner_name?[targetRoom.owner_name]:[])]);
 
 
+let latency=null, latencyState='measuring', pingSerial=0, pendingPing=null, httpPing=null;
+const pingClock=()=>performance.now();
+function latencyLabel(){return latency===null?({measuring:'测量中',offline:'未连接',timeout:'超时',paused:'已暂停'}[latencyState] || '未连接'):`${latency}ms`;}
+function latencyLevel(){return latency===null?(latencyState==='timeout'||latencyState==='offline'?'bad':'unknown'):latency<100?'good':latency<300?'fair':'bad';}
+function latencyView(){return `<span class="latency-badge" data-level="${latencyLevel()}" title="当前客户端到服务器的往返延迟"><span class="latency-label">延迟 ${latencyLabel()}</span></span>`;}
+function paintLatency(){
+  root.querySelectorAll('.latency-badge').forEach(el=>{el.dataset.level=latencyLevel();el.querySelector('.latency-label').textContent=`延迟 ${latencyLabel()}`;el.setAttribute('aria-label',`客户端到服务器往返延迟：${latencyLabel()}`);});
+}
+function setLatency(value,state='ready'){latency=value;latencyState=state;paintLatency();}
+function resetLatency(state='measuring'){
+  const request=httpPing;httpPing=null;request?.abort();pendingPing=null;setLatency(null,state);
+}
+function pingRoom(ws){
+  if(ws!==socket || ws.readyState!==WebSocket.OPEN || document.hidden || superseded)return;
+  if(pendingPing){
+    if(pingClock()-pendingPing.started<10000)return;
+    pendingPing=null;setLatency(null,'timeout');
+  }
+  const id=++pingSerial;pendingPing={id,started:pingClock()};
+  ws.send(JSON.stringify({type:'ping',id}));
+}
+async function probeLatency(){
+  if(document.hidden)return;
+  if(navigator.onLine===false){resetLatency('offline');return;}
+  if(room){if(connected&&socket?.readyState===WebSocket.OPEN)pingRoom(socket);return;}
+  if(httpPing)return;
+  const request=new AbortController();httpPing=request;const started=pingClock();
+  const timeout=setTimeout(()=>request.abort(),8000);
+  try{
+    const response=await fetch('/lobby/ping',{cache:'no-store',signal:request.signal});
+    const message=await response.json();if(!response.ok || message.type!=='pong')throw Error('Ping failed');
+    if(httpPing===request&&!room&&!document.hidden)setLatency(Math.max(1,Math.round(pingClock()-started)));
+  }catch(e){if(httpPing===request&&!room&&!document.hidden)setLatency(null,e.name==='AbortError'?'timeout':'offline');}
+  finally{clearTimeout(timeout);if(httpPing===request)httpPing=null;}
+}
+
+
 async function api(path, data) {
   const response = await fetch(`/lobby${path}`, data === undefined ? {} : {
     method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(data),
@@ -48,27 +85,29 @@ function saveProfile() {
   localStorage.setItem('lobby_name',name);localStorage.setItem('lobby_avatar',avatar);
 }
 function closeSocket() {
+  resetLatency();
   clearTimeout(reconnect);reconnect=null;
   if(socket){socket.onclose=null;socket.close();socket=null;}
   connected=false;
 }
 function clearRoom() {
   closeSocket();sheet=null;pendingKick=null;room=null;mountedSession='';gameConnected=false;gameShell.replaceChildren();gameShell.hidden=true;
-  localStorage.removeItem('lobby_room_id');history.replaceState(null,'','/');render();refreshList();
+  localStorage.removeItem('lobby_room_id');history.replaceState(null,'','/');render();refreshList();probeLatency();
 }
 function connect() {
   if(!room || superseded)return;
   closeSocket();const rid=room.id;
   const ws=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/lobby/rooms/${rid}/ws/${playerId}`);
   socket=ws;
-  ws.onopen=()=>{if(socket!==ws)return;connected=false;};
+  ws.onopen=()=>{if(socket!==ws)return;connected=false;pingRoom(ws);};
   ws.onmessage=event=>{
     if(socket!==ws)return;
-    try{const m=JSON.parse(event.data);if(m.type==='room_state'){connected=true;updateRoom(m.data);}}
+    try{const m=JSON.parse(event.data);if(m.type==='room_state'){connected=true;updateRoom(m.data);}
+      else if(m.type==='pong'&&pendingPing&&m.id===pendingPing.id){const elapsed=pingClock()-pendingPing.started;pendingPing=null;if(elapsed>=10000)setLatency(null,'timeout');else if(!document.hidden)setLatency(Math.max(1,Math.round(elapsed)));}}
     catch{error='同步消息异常，正在恢复';render();}
   };
   ws.onclose=event=>{
-    if(socket!==ws)return;connected=false;
+    if(socket!==ws)return;connected=false;resetLatency('offline');
     if(event.code===4001){superseded=true;conceal();showGame=false;sheet=null;error='此房间已在另一个标签页打开，刷新这里即可接管。';render();return;}
     if([4003,4403,4404,1008].includes(event.code)){sheet=null;pendingKick=null;clearRoom();error='你已离开房间或被房主移出。';render();return;}
     render();if(room?.id===rid)reconnect=setTimeout(connect,1800);
@@ -248,7 +287,7 @@ function render() {
   const pageScroll={x:window.scrollX,y:window.scrollY};
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions">${latencyView()}<button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
@@ -256,7 +295,7 @@ function render() {
   const nextAvatars=root.querySelector('.avatars');if(nextAvatars)nextAvatars.scrollTop=avatarScroll;
   if(saved){const el=document.getElementById(saved.id);if(el){el.focus({preventScroll:true});if(el.setSelectionRange&&saved.start!==null&&el.type!=='number')el.setSelectionRange(saved.start,saved.end);}}
   if(window.scrollX!==pageScroll.x || window.scrollY!==pageScroll.y)window.scrollTo(pageScroll.x,pageScroll.y);
-  updateCountdown();
+  updateCountdown();paintLatency();
 }
 function bindEvents() {
   const bind=(id,event,fn)=>document.getElementById(id)?.addEventListener(event,fn);
@@ -296,10 +335,16 @@ function bindEvents() {
 }
 function updateCountdown(){const el=document.getElementById('countdown-number');if(el&&room?.countdown)el.textContent=Math.max(0,Math.ceil((room.countdown.deadline*1000-Date.now()-serverOffset)/1000));}
 setInterval(updateCountdown,100);
-setInterval(()=>{if(connected&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'ping'}));},15000);
+setInterval(probeLatency,5000);
 setInterval(()=>{if(!document.hidden){if(room)refreshRoom();else refreshList();}},5000);
-window.addEventListener('online',()=>{if(room&&!connected&&!superseded)connect();else if(!room)refreshList();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)conceal();else if(room&&!superseded){if(!connected)connect();else refreshRoom();}else if(!room)refreshList();});
+window.addEventListener('offline',()=>resetLatency('offline'));
+window.addEventListener('online',()=>{probeLatency();if(room&&!connected&&!superseded)connect();else if(!room)refreshList();});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){conceal();resetLatency('paused');return;}
+  setLatency(null,'measuring');
+  if(room&&!superseded){if(!connected)connect();else refreshRoom();}else if(!room)refreshList();
+  probeLatency();
+});
 window.addEventListener('message',e=>{
   if(e.origin!==location.origin||e.source!==gameShell.querySelector('iframe')?.contentWindow)return;
   if(e.data?.type==='return_to_lobby'){conceal();showGame=false;render();refreshRoom();}
@@ -308,7 +353,7 @@ window.addEventListener('message',e=>{
 (async()=>{
   try{games=await api('/games');const saved=(await api(`/players/${playerId}/room`)).room_id;if(saved)await loadRoom(saved);else await refreshList();}
   catch(e){error=e.message;}
-  finally{booting=false;if(!name&&!room)openSheet('onboarding');else render();}
+  finally{booting=false;if(!name&&!room)openSheet('onboarding');else render();probeLatency();}
 })();
 document.addEventListener('keydown',e=>{
   if(!sheet&&!pendingKick)return;
