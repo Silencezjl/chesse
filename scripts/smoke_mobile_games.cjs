@@ -11,6 +11,7 @@ try{for(const game of ['cheese','bluff']){
  for(const p of pages)await p.locator('#ready').click();
  for(const p of pages)await p.locator('iframe').waitFor();
  const frames=pages.map(p=>p.frameLocator('iframe'));
+ await pages[0].locator('#fullscreen-game').click();await pages[0].waitForFunction(()=>document.fullscreenElement);
  if(game==='cheese'){
   for(let i=0;i<count;i++){await frames[i].getByRole('button',{name:'查看身份与私密信息'}).waitFor();assert.equal(await frames[i].getByText('你的骰子:',{exact:false}).count(),0);await frames[i].getByRole('button',{name:'查看身份与私密信息'}).click();}
   for(const f of frames){for(const label of ['选为共犯','偷看']){const target=f.getByRole('button',{name:label,exact:true});if(await target.count()){await target.first().click();await f.getByRole('button',{name:'确认提交'}).click();await f.getByRole('dialog').waitFor({state:'detached'});}}}
@@ -20,7 +21,7 @@ try{for(const game of ['cheese','bluff']){
   for(const f of frames)await f.getByRole('button',{name:'发起投票',exact:true}).waitFor();
   for(const f of frames.slice(0,3))await f.getByRole('button',{name:'发起投票',exact:true}).click();
   for(const f of frames){await f.getByRole('button',{name:'投票',exact:true}).first().click();await f.getByRole('button',{name:'确认提交'}).click();}
-  await frames[0].getByText('查看身份与行动过程',{exact:false}).waitFor();
+  await frames[0].getByText('查看身份与行动过程',{exact:false}).click();assert.ok(await pages[0].frames()[1].evaluate(()=>document.scrollingElement.scrollHeight>innerHeight));
  }else{
   for(const f of frames)await f.locator('#role-toggle').waitFor();
   for(const f of frames)assert.equal(await f.locator('.role').count(),0);
@@ -34,8 +35,10 @@ try{for(const game of ['cheese','bluff']){
   // End the session after the completed round through the actual confirmation UI.
   await frames[0].locator('#scores summary').click();await frames[0].locator('#terminate').click();await frames[0].locator('#confirm-target').click();await frames[0].getByText('本局已提前结束',{exact:true}).waitFor();
  }
- for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:800});assert.ok(await pages[0].evaluate(()=>document.documentElement.scrollWidth<=innerWidth));const frame=pages[0].frames()[1];assert.ok(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${game} overflow ${width}`);}
+ for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:800});assert.ok(await pages[0].evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.ok(await pages[0].evaluate(()=>document.scrollingElement.scrollHeight<=innerHeight+1));const frame=pages[0].frames()[1];assert.ok(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${game} overflow ${width}`);}
+ const child=pages[0].frames()[1];const bottom=await child.evaluate(()=>{scrollTo(0,1e6);return {y:scrollY,h:innerHeight,total:document.scrollingElement.scrollHeight};});if(bottom.total>bottom.h+1)assert.ok(bottom.y>0);
+ await pages[0].mouse.move(4,4);await pages[0].mouse.wheel(0,500);assert.equal(await pages[0].evaluate(()=>scrollY),0);
  for(const pid of [...ids].reverse())await req(`/rooms/${rid}/leave`,{player_id:pid});for(const c of contexts)await c.close();
- console.log('PASS:',game,'mobile private panels, target confirmation, full round, 320–430px layout');
+ console.log('PASS:',game,'full-screen outer viewport pinned, long content remains scrollable, private panels, target confirmation, full round, 320–430px layout');
  }assert.deepEqual(errors,[]);
 }finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1)});

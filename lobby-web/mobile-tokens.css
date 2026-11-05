@@ -10,3 +10,8 @@ button,input,select{-webkit-tap-highlight-color:transparent}button{min-height:va
 
 .nickname-editor:focus-within{outline:3px solid #f18d70;outline-offset:3px}
 .nickname-editor input:focus-visible{outline:0}
+
+/* Keep boundary drags in their own page/panel instead of pulling empty space. */
+html{overscroll-behavior-y:none}
+html:has([role=dialog][aria-modal=true]){overflow:hidden}
+[role=dialog]{overscroll-behavior-y:contain}

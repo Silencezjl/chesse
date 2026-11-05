@@ -15,6 +15,22 @@ const rejectedNames = new Set();
 const randomNickname = () => PlayerNames.random(draftName,[...Object.entries(room?.members || {}).filter(([id])=>id!==playerId).map(([,p])=>p.name),...rejectedNames,...(sheet==='join'&&targetRoom?.owner_name?[targetRoom.owner_name]:[])]);
 
 
+let observedActionBar=null;
+function measureActionBar(){
+  const bar=root.querySelector('.action-bar');
+  document.body.style.setProperty('--action-bar-height',`${bar?Math.ceil(bar.getBoundingClientRect().height):0}px`);
+}
+const actionBarObserver=typeof ResizeObserver==='function'?new ResizeObserver(measureActionBar):null;
+function syncScrollLayout(){
+  const bar=root.querySelector('.action-bar');
+  document.body.classList.toggle('has-action-bar',Boolean(bar));
+  document.documentElement.classList.toggle('game-viewport',document.body.classList.contains('game-mode'));
+  document.documentElement.classList.toggle('sheet-open',Boolean(root.querySelector('[role=dialog]')));
+  if(bar!==observedActionBar){actionBarObserver?.disconnect();observedActionBar=bar;if(bar)actionBarObserver?.observe(bar);}
+  measureActionBar();
+}
+window.addEventListener('resize',measureActionBar);
+
 let fullscreenPending=false;
 const fullscreenElement=()=>document.fullscreenElement || document.webkitFullscreenElement;
 const canFullscreen=()=>Boolean((document.documentElement.requestFullscreen && document.fullscreenEnabled!==false) || (document.documentElement.webkitRequestFullscreen && document.webkitFullscreenEnabled!==false));
@@ -318,7 +334,7 @@ function render() {
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
   root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions">${latencyView()}${fullscreenButton()}<button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${PlayerNames.html(name || '设置我的资料')}</span></button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><div class="game-toolbar-actions">${fullscreenButton('game')}<button class="secondary" id="show-room">${room.stage==='finished'?'返回房间':'查看房间'}</button></div></div>`:room?roomView():homeView()}</div>${sheetView()}`;
-  bindEvents();mountGame();
+  syncScrollLayout();bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
   const nextDialog=root.querySelector('[role=dialog]');if(nextDialog)nextDialog.scrollTop=scroll;

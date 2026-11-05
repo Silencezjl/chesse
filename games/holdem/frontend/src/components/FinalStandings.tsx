@@ -64,7 +64,7 @@ export default function FinalStandings({
   const hasAnyGroup = groupSummaries.some(g => g.players.length > 1);
 
   return (
-    <div className="flex flex-col h-[100dvh] max-w-lg mx-auto overflow-hidden">
+    <div className="h-[100dvh] max-w-lg mx-auto overflow-y-auto overscroll-contain p-4">
       <h2 className="text-2xl font-bold text-center text-white mb-1">🏆 最终结算</h2>
       
       {/* 总体平账检查 */}

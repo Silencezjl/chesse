@@ -145,3 +145,12 @@ LOBBY_URL=http://localhost:18089 python scripts/smoke_empty_rooms.py
 切后台只暂停测速，仍保留原有的 15 秒房间心跳。
 
 顶部四角按钮支持进入/退出浏览器原生全屏，向支持的浏览器请求隐藏导航栏；目标是稳定的根文档，房间状态刷新、规则切换及游戏 iframe 更新不会主动退出全屏。必须由用户点击触发；刷新、系统手势或浏览器切换可能退出，不自动抢占屏幕。支持能力通过 API 检测，不支持时展示说明。全屏 API 不能保证所有手机系统行为；Android Chrome 的实体设备验收仍需实际测试，iPhone 浏览器支持随系统而异。实现参考 [MDN requestFullscreen](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen)。
+
+全屏滚动按内容分配：短大厅页不再预留固定 140px，等待室只为操作栏实测高度和 16px 间距留位；游戏外层不滚动，长规则、历史和游戏内长名单仍可阅读。资料弹层锁定背景，头像列表独立滚动。Holdem 多人结算在面板内滚动，底部返回按钮可达。
+
+新增滚动回归脚本（Node.js 22+ 和独立 Playwright；仅隔离端口 18088/18089，会创建并清理自己的 12 人房间）：
+
+```bash
+PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome \
+LOBBY_URL=http://localhost:18088 node scripts/smoke_scroll.cjs
+```
