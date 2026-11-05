@@ -127,7 +127,7 @@ class MobileLobbyTest(unittest.IsolatedAsyncioTestCase):
         for field in ('password_hash','created_at','pending_member_ids'):old.pop(field)
         restored=LobbyRoom.restore(old)
         self.assertIsNone(restored.data['password_hash']);self.assertEqual(restored.data['created_at'],0)
-        for i in range(11):restored.join(f'p{i}','朋友','🐸')
+        for i in range(11):restored.join(f'p{i}',f'朋友{i}','🐸')
         await api.save(restored)
         self.assertFalse((await api.list_rooms())[0]['joinable'])
         with self.assertRaises(RoomError):restored.join('overflow','朋友','🐸')
@@ -144,8 +144,27 @@ class MobileLobbyTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_concurrent_last_seat_join_respects_capacity(self):
         r=LobbyRoom('123456','host','小明','🐭')
-        for i in range(10): r.join(f'p{i}','朋友','🐸')
+        for i in range(10): r.join(f'p{i}',f'朋友{i}','🐸')
         await api.save(r)
         results=await asyncio.gather(*(api.join_room('123456',api.Profile(player_id=f'late{i}',name='迟到',avatar='🐱')) for i in range(2)),return_exceptions=True)
         self.assertEqual(sum(isinstance(v,dict) for v in results),1)
         self.assertEqual(len((await api.load('123456')).data['members']),12)
+
+    async def test_nickname_collision_checks_join_profile_and_reconnect(self):
+        data = await api.create_room(api.Profile(player_id='host',name='摸鱼小熊#07',avatar='animal-01'))
+        rid=data['id'];self.assertEqual(data['members']['host']['name'],'摸鱼小熊')
+        for value in ['摸鱼小熊','摸鱼小熊07','摸鱼小熊#99']:
+            with self.assertRaises(HTTPException) as caught:
+                await api.join_room(rid,api.Profile(player_id='guest',name=value,avatar='animal-02'))
+            self.assertEqual(caught.exception.status_code,409)
+            self.assertEqual(caught.exception.detail['code'],'nickname_taken')
+        await api.join_room(rid,api.Profile(player_id='guest',name='奶茶海獭',avatar='animal-02'))
+        await api.join_room(rid,api.Profile(player_id='guest',name='奶茶海獭',avatar='animal-02'))
+        with self.assertRaises(HTTPException):
+            await api.update_profile(rid,api.Profile(player_id='guest',name='摸鱼小熊',avatar='animal-03'))
+        current=await api.get_room(rid,'guest');self.assertEqual(current['members']['guest']['name'],'奶茶海獭')
+        await api.update_profile(rid,api.Profile(player_id='guest',name='奶茶海獭',avatar='animal-03'))
+        outcomes=await asyncio.gather(*(api.join_room(rid,api.Profile(player_id=pid,name='快乐水豚',avatar='animal-04')) for pid in ['a','b']),return_exceptions=True)
+        self.assertEqual(sum(isinstance(value,dict) for value in outcomes),1)
+        self.assertEqual(sum(isinstance(value,HTTPException) for value in outcomes),1)
+        self.assertEqual(len((await api.get_room(rid,'host'))['members']),3)

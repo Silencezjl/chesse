@@ -11,7 +11,8 @@ let socket = null, reconnect = null, connected = false, superseded = false, show
 let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
 let draftName = '', draftAvatar = '', password = '', selectedGame = '', targetRoom = null, gameConnected = false;
 let listing = false, lastFocus = null, restartChoose = false;
-const randomNickname = () => PlayerNames.random(draftName);
+const rejectedNames = new Set();
+const randomNickname = () => PlayerNames.random(draftName,[...Object.entries(room?.members || {}).filter(([id])=>id!==playerId).map(([,p])=>p.name),...rejectedNames,...(sheet==='join'&&targetRoom?.owner_name?[targetRoom.owner_name]:[])]);
 
 
 async function api(path, data) {
@@ -20,7 +21,7 @@ async function api(path, data) {
   });
   let result;
   try { result = await response.json(); } catch { throw Error('服务暂时不可用，请稍后重试'); }
-  if (!response.ok) throw Error(typeof result.detail === 'string' ? result.detail : '提交内容有误，请检查后重试');
+  if (!response.ok) {const failure=Error(typeof result.detail==='string'?result.detail:result.detail?.message || '提交内容有误，请检查后重试');failure.code=result.detail?.code;throw failure;}
   return result;
 }
 const profile = () => ({player_id:playerId, name:name.trim(), avatar});
@@ -112,10 +113,11 @@ async function beginJoin(id) {
   targetRoom=await api(`/rooms/${encodeURIComponent(id)}/preview`);
   if(!targetRoom.joinable)throw Error('房间已满，请选择其他房间');
   if(!name || targetRoom.has_password){openSheet('join',targetRoom);return;}
-  await api(`/rooms/${id}/join`,profile());await loadRoom(id);
+  try{await api(`/rooms/${id}/join`,profile());await loadRoom(id);}
+  catch(e){if(e.code!=='nickname_taken')throw e;rejectedNames.add(name);openSheet('join',targetRoom);draftName=randomNickname();error='昵称重名了，已为你换一个，确认后即可加入。';render();}
 }
 async function submitProfile() {
-  const nextName=draftName.trim();
+  const nextName=PlayerNames.text(draftName).trim();
   if(!PlayerNames.parts(nextName).base.trim() || nextName.length>12)throw Error('请输入 1–12 个字符的昵称');
   const values={player_id:playerId,name:nextName,avatar:draftAvatar};
   if(sheet==='profile'){
@@ -187,7 +189,7 @@ function sheetView() {
   else if(['create','join','profile'].includes(sheet)){
     title=sheet==='create'?'开一桌，等朋友':sheet==='join'?`加入${roomTitle(targetRoom)}`:'我的资料';
     content=`<form id="profile-form" class="profile-form">${sheet==='join'&&targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}
-    <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><div class="nickname-editor"><input id="name" autocomplete="nickname" maxlength="${PlayerNames.parts(draftName).tag?9:12}" value="${esc(PlayerNames.parts(draftName).base)}" placeholder="朋友怎么称呼你？" required><span class="name-tag" id="nickname-tag">${esc(PlayerNames.parts(draftName).tag)}</span></div><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
+    <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><div class="nickname-editor"><input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></div><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
     ${sheet==='create'?`<label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label>`:''}
     ${sheet==='create'||sheet==='join'&&targetRoom.has_password?`<label>${sheet==='create'?'房间密码（选填）':'房间密码'}<input id="password" type="password" autocomplete="${sheet==='create'?'new-password':'off'}" maxlength="20" value="${esc(password)}" placeholder="${sheet==='create'?'留空，朋友可直接加入':'请输入房主设置的密码'}" ${sheet==='join'?'required':''}></label>`:''}
     <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button>${busy?'正在保存…':sheet==='create'?'创建房间':sheet==='join'?'加入房间':'保存资料'}</button></form>`;
@@ -242,8 +244,8 @@ function bindEvents() {
   root.querySelectorAll('[data-create]').forEach(b=>b.onclick=()=>beginCreate(b.dataset.create));
   root.querySelectorAll('[data-join]').forEach(b=>b.onclick=()=>action(()=>beginJoin(b.dataset.join)));
   bind('close-sheet','click',closeSheet);bind('cancel-kick','click',closeSheet);
-  bind('random-name','click',()=>{draftName=randomNickname();const parts=PlayerNames.parts(draftName),input=document.getElementById('name');input.value=parts.base;input.maxLength=9;document.getElementById('nickname-tag').textContent=parts.tag;});
-  bind('name','input',e=>draftName=e.target.value+PlayerNames.parts(draftName).tag);bind('password','input',e=>password=e.target.value);
+  bind('random-name','click',()=>{draftName=randomNickname();document.getElementById('name').value=draftName;});
+  bind('name','input',e=>draftName=e.target.value);bind('password','input',e=>password=e.target.value);
   bind('create-game','change',e=>selectedGame=e.target.value);
   root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{
     draftAvatar=b.dataset.avatar;

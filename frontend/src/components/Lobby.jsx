@@ -28,7 +28,7 @@ export default function Lobby({ ws }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const randomize = () => {
-    setName(window.PlayerNames?.random() || '摸鱼小熊#07');
+    setName(window.PlayerNames?.random() || '摸鱼小熊');
     setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)]);
   };
 
@@ -180,7 +180,7 @@ export default function Lobby({ ws }) {
               {NAMES.map((n) => (
                 <button
                   key={n}
-                  onClick={() => setName(n + '#' + String(Math.floor(Math.random() * 100)).padStart(2,'0'))}
+                  onClick={() => setName(n)}
                   className="text-xs px-2.5 py-1 rounded-full bg-white/10 hover:bg-cheese-500/30 hover:text-cheese-300 transition-all"
                 >
                   {n}

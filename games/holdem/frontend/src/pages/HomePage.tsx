@@ -29,7 +29,7 @@ export default function HomePage() {
   const [checking, setChecking] = useState(true);
 
   const initProfile = useCallback(() => {
-    setName(window.PlayerNames?.random() || '摸鱼小熊#07');
+    setName(window.PlayerNames?.random() || '摸鱼小熊');
     setEmoji(EMOJIS[Math.floor(Math.random()*EMOJIS.length)]);
   }, []);
 

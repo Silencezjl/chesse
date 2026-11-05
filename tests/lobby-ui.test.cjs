@@ -149,38 +149,57 @@ test('animal selection and room refresh preserve picker scroll, dialog scroll an
     assert.equal(a.w.document.activeElement.getAttribute('aria-pressed'),'true');
   }finally{a.dom.window.close();}
 });
-test('random nicknames offer 100 distinct bases and two digits without saving until submission',async()=>{
+test('random nicknames offer 100 distinct names without saving until submission',async()=>{
   const a=await app();try{
     a.w.document.querySelector('#my-profile').click();const names=new Set();
     for(let i=0;i<100;i++){
       let call=0;a.w.Math.random=()=>call++%2===0?(i+.1)/100:0;
       a.w.document.querySelector('#random-name').click();
       const value=a.w.document.querySelector('#name').value;
-      assert.equal(a.w.document.querySelector('#nickname-tag').textContent,'#00');assert.ok(value);assert.ok(value.length<=12);names.add(value);
+      assert.doesNotMatch(value, /#|[0-9]/);assert.ok(value);assert.ok(value.length<=12);names.add(value);
     }
     assert.equal(names.size,100);assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');
     assert.equal(a.calls.filter(c=>c.url.endsWith('/profile')).length,0);
-    const base=a.w.document.querySelector('#name').value,draft=base+a.w.document.querySelector('#nickname-tag').textContent;a.setRoom(initial());
+    const base=a.w.document.querySelector('#name').value,draft=base;a.setRoom(initial());
     assert.equal(a.w.document.querySelector('#name').value,base);
     a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
     assert.equal(a.w.localStorage.getItem('lobby_name'),draft);
     assert.equal(a.calls.find(c=>c.url.endsWith('/profile')).body.name,draft);
   }finally{a.dom.window.close();}
 });
-test('nickname tags are escaped, consistently styled, and compatible with previous random names',async()=>{
+test('names have no suffix, legacy names remain compatible, and input preserves the full name',async()=>{
   const r=initial();r.members.p0.name='摸鱼小熊07';r.members.p1.name='朋友#42';const a=await app(r);try{
-    assert.equal(a.w.PlayerNames.text('摸鱼小熊07'),'摸鱼小熊#07');
+    assert.equal(a.w.PlayerNames.text('摸鱼小熊07'),'摸鱼小熊');
     assert.equal(a.w.PlayerNames.text('自定义2026'),'自定义2026');
-    assert.equal(a.w.PlayerNames.html('<img src=x onerror=alert(1)>#09'),'&lt;img src=x onerror=alert(1)&gt;<span class="name-tag">#09</span>');
+    assert.equal(a.w.PlayerNames.html('<img src=x onerror=alert(1)>#09'),'&lt;img src=x onerror=alert(1)&gt;');
     assert.equal(a.w.PlayerNames.html('用户#123'),'用户#123');
-    assert.equal(a.w.document.querySelector('#my-profile .name-tag').textContent,'#07');
-    assert.equal(a.w.document.querySelector('.room-head .name-tag').textContent,'#07');
-    assert.equal(a.w.document.querySelector('[data-member=p1] .name-tag').textContent,'#42');
+    assert.equal(a.w.document.querySelector('#my-profile').textContent,'摸鱼小熊');
+    assert.equal(a.w.document.querySelector('[data-member=p1] strong').textContent,'朋友');
     a.w.document.querySelector('#my-profile').click();
-    assert.equal(a.w.document.querySelector('#name').value,'摸鱼小熊');
-    assert.equal(a.w.document.querySelector('#nickname-tag').textContent,'#07');
+    assert.equal(a.w.document.querySelector('#name').value,'摸鱼小熊');assert.equal(a.w.document.querySelector('#name').maxLength,12);
     const input=a.w.document.querySelector('#name');input.value='新昵称';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
     a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
-    assert.equal(a.w.localStorage.getItem('lobby_name'),'新昵称#07');
+    assert.equal(a.w.localStorage.getItem('lobby_name'),'新昵称');
   }finally{a.dom.window.close();}
+});
+test('random names avoid occupied legacy variants and do not repeat before the pool is exhausted',async()=>{
+ const a=await app();try{
+  const names=a.w.PlayerNames,seen=new Set();a.w.Math.random=()=>0;
+  for(let i=0;i<99;i++){const next=names.random('', ['摸鱼小熊#07']);assert.notEqual(next,'摸鱼小熊');assert.ok(!seen.has(next));seen.add(next);}
+  assert.equal(seen.size,99);assert.notEqual(names.random('', ['摸鱼小熊07']),'摸鱼小熊');
+  const expanded=names.random('',names.pool);assert.doesNotMatch(expanded,/[0-9#]/);assert.ok(!names.pool.includes(expanded));
+  assert.deepEqual([...names.pool],JSON.parse(fs.readFileSync('backend/lobby/nicknames.json','utf8')));
+ }finally{a.dom.window.close();}
+});
+
+test('joining with an occupied saved name opens a rename sheet and preserves identity',async()=>{
+ const r={id:'654321',owner_name:'朋友',owner_avatar:'animal-01',game_id:'cheese',stage:'waiting',count:1,capacity:12,joinable:true,has_password:false};
+ const a=await app(null,[r]);try{
+  const original=a.w.fetch;let blocked=true;
+  a.w.fetch=async(url,opts)=>{if(url.endsWith('/join')&&blocked){blocked=false;return {ok:false,json:async()=>({detail:{code:'nickname_taken',message:'昵称重名'}})};}return original(url,opts);};
+  a.w.document.querySelector('[data-join]').click();await tick();
+  const input=a.w.document.querySelector('#name');assert.ok(input);assert.notEqual(input.value,'房主');assert.notEqual(input.value,'朋友');assert.match(a.w.document.querySelector('[role=alert]').textContent,/重名/);
+  a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+  assert.equal(a.w.localStorage.getItem('lobby_player_id'),'p0');assert.equal(a.w.document.querySelector('[role=dialog]'),null);
+ }finally{a.dom.window.close();}
 });

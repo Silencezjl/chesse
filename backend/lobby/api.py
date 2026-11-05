@@ -12,7 +12,7 @@ from redis.asyncio import Redis
 
 from lobby.catalog import catalog
 from lobby.games import GAMES
-from lobby.rooms import LobbyRoom, RoomError, new_id
+from lobby.rooms import LobbyRoom, RoomError, NicknameTaken, new_id
 from lobby.runtime import CheeseRuntime, HoldemRuntime
 from games.bluff.service import BluffRuntime
 
@@ -182,6 +182,8 @@ def member(room, pid):
 def rule(fn, *args):
     try:
         return fn(*args)
+    except NicknameTaken as exc:
+        raise HTTPException(409, {'code':'nickname_taken','message':str(exc)}) from exc
     except (RoomError, ValueError) as exc:
         raise HTTPException(409, str(exc)) from exc
 
@@ -479,6 +481,7 @@ async def update_profile(room_id: str, request: Profile):
         if room.data['stage'] == 'playing':
             raise HTTPException(409, '本局结束后可以修改资料')
         values = rule(room._member, request.name, request.avatar)
+        rule(room.check_name, request.player_id, values['name'])
         room.data['members'][request.player_id].update(name=values['name'], avatar=values['avatar'])
         await save(room)
         await publish(room)

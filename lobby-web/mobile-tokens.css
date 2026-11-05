@@ -3,10 +3,10 @@ button,input,select{-webkit-tap-highlight-color:transparent}button{min-height:va
 
 .user-avatar{display:inline-block;vertical-align:middle;object-fit:contain;border-radius:50%;padding:4px;background:#eeeafe;flex-shrink:0}
 
-.name-tag{color:#a1a1aa;font-weight:400;white-space:nowrap}
+
 
 .nickname-editor{display:flex;align-items:center;flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;background:transparent;padding-right:12px}
 .nickname-editor input{border:0;background:transparent;width:100%;min-width:0}
-.nickname-editor .name-tag:empty{display:none}
+
 .nickname-editor:focus-within{outline:3px solid #f18d70;outline-offset:3px}
 .nickname-editor input:focus-visible{outline:0}

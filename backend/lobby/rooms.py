@@ -6,13 +6,28 @@ import secrets
 import string
 import uuid
 import time
+import re
+import json
+from pathlib import Path
 
 from .catalog import CATALOG, options_for
 
 from .games import GAMES, GameAdapter
 
 
+NICKNAMES = tuple(json.loads(Path(__file__).with_name('nicknames.json').read_text()))
+LEGACY_NICKNAME = re.compile(r'(' + '|'.join(map(re.escape, NICKNAMES)) + r')\d{2}(?!\d)')
+
+def display_name(value):
+    name = LEGACY_NICKNAME.sub(r'\1', value.strip())
+    return re.sub(r'#\d{2}(?!\d)', '', name)
+
+
 class RoomError(ValueError):
+    pass
+
+
+class NicknameTaken(RoomError):
     pass
 
 
@@ -29,7 +44,7 @@ class LobbyRoom:
 
     @staticmethod
     def _member(name: str, avatar: str) -> dict:
-        name = name.strip()
+        name = display_name(name)
         if not name or len(name) > 12 or not avatar or len(avatar) > 16:
             raise RoomError("请填写不超过 12 个字符的昵称和有效头像")
         return {"name": name, "avatar": avatar, "connected": True}
@@ -58,6 +73,13 @@ class LobbyRoom:
         actual = hashlib.scrypt(password.encode(), salt=salt.encode(), n=16384, r=8, p=1).hex()
         return hmac.compare_digest(expected, actual)
 
+    def check_name(self, player_id, name):
+        candidate = display_name(name).casefold()
+        if player_id in self.data['members'] and candidate == display_name(self.data['members'][player_id]['name']).casefold():
+            return
+        if any(pid != player_id and display_name(p['name']).casefold() == candidate for pid,p in self.data['members'].items()):
+            raise NicknameTaken('昵称已被房间内其他玩家使用，请换一个昵称')
+
     def join(self, player_id: str, name: str, avatar: str):
         if player_id in self.data["members"]:
             self.data["members"][player_id]["connected"] = True
@@ -67,6 +89,7 @@ class LobbyRoom:
         if player_id in self.data["banned"]:
             raise RoomError("你已被移出此房间")
         game_id = self.data["game_id"]
+        self.check_name(player_id, name)
         self.data["members"][player_id] = self._member(name, avatar)
         self.data["members"][player_id]["ready"] = False
         limit = CATALOG.get(game_id, {}).get("maximum", 12)

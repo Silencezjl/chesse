@@ -13,18 +13,21 @@
   "沙雕海鸥", "拖鞋大侠", "被窝富翁", "奶盖侦探", "薯条刺客", "薯片勇士", "螺蛳粉侠", "烤串诗人", "火锅精灵", "珍珠奶龙",
 ]);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  // Only migrate the previous generated names; custom names stay intact.
+  // Hide historical tags in names and prose without changing stored game records.
   const legacy = new RegExp(`(${pool.join('|')})(\\d{2})(?!\\d)`, 'g');
-  const text = value => String(value ?? '').replace(legacy, '$1#$2');
-  const parts = value => {
-    const name = text(value), match = /^(.*)(#\d{2})$/.exec(name);
-    return match ? {base:match[1],tag:match[2]} : {base:name,tag:''};
+  const text = value => String(value ?? '').replace(legacy, '$1').replace(/#\d{2}(?!\d)/g, '');
+  const parts = value => ({base:text(value),tag:''});
+  const html = value => escape(text(value));
+  const seen = new Set();
+  const random = (previous='', occupied=[]) => {
+    const blocked = new Set([previous,...occupied].map(value=>text(value).trim().toLocaleLowerCase()));
+    let available = pool.filter(name=>!blocked.has(name.toLocaleLowerCase()));
+    if(!available.length)available=['迷你','开心','超级'].flatMap(prefix=>pool.map(name=>prefix+name)).filter(name=>!blocked.has(name.toLocaleLowerCase()));
+    let fresh = available.filter(name=>!seen.has(name));
+    if(!fresh.length){seen.clear();fresh=available;}
+    const value=fresh[Math.floor(Math.random()*fresh.length)];
+    if(!value)throw Error('暂无可用昵称，请手动输入');
+    seen.add(value);return value;
   };
-  const html = value => escape(text(value)).replace(/#\d{2}(?!\d)/g, tag => `<span class="name-tag">${tag}</span>`);
-  const random = previous => {
-    let value = pool[Math.floor(Math.random()*pool.length)] + '#' + String(Math.floor(Math.random()*100)).padStart(2,'0');
-    if(value===previous)value=value.slice(0,-2)+String((Number(value.slice(-2))+1)%100).padStart(2,'0');
-    return value;
-  };
-  globalThis.PlayerNames = Object.freeze({text,parts,html,random});
+  globalThis.PlayerNames = Object.freeze({pool,text,parts,html,random});
 })();
