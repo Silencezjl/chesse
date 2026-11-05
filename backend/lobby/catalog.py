@@ -1,5 +1,6 @@
 """Public game descriptions and validated waiting-room settings."""
 from copy import deepcopy
+from .rules import RULES
 
 CATALOG = {
     'cheese': dict(title='奶酪大盗', icon='/assets/game-cheese-indigo-v1.webp', minimum=5, maximum=8, entry='/cheese/',
@@ -40,4 +41,4 @@ def options_for(game_id, options):
 
 
 def catalog():
-    return [dict(id=gid, **deepcopy(info)) for gid, info in CATALOG.items()]
+    return [dict(id=gid, **deepcopy(info), rules=deepcopy(RULES[gid])) for gid, info in CATALOG.items()]

@@ -6,14 +6,14 @@ const source = fs.readFileSync('lobby-web/lobby.js','utf8');
 const clone = value => JSON.parse(JSON.stringify(value));
 const initial = () => ({id:'123456',owner_id:'p0',game_id:'cheese',options:{max_dice:6},stage:'waiting',seats:['p0','p1'],revision:1,session_id:null,session_members:[],server_time:Date.now()/1000,members:{p0:{name:'房主',avatar:'🐭',connected:true,ready:false},p1:{name:'朋友',avatar:'🦊',connected:true,ready:false}}});
 const tick = () => new Promise(resolve=>setImmediate(resolve));
-async function app(start=initial(), directory=[]) {
+async function app(start=initial(), directory=[], savedName='房主') {
   let room=clone(start);const calls=[],sockets=[],intervals=[];
   const dom=new JSDOM('<div id="app"></div><section id="game-shell" hidden></section><div id="toast"></div>',{url:'http://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
-  const w=dom.window;w.localStorage.setItem('lobby_player_id','p0');w.localStorage.setItem('lobby_name','房主');
+  const w=dom.window;w.localStorage.setItem('lobby_player_id','p0');w.localStorage.setItem('lobby_name',savedName);
   w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   w.fetch=async(url,opts)=>{
     calls.push({url,body:opts?.body?JSON.parse(opts.body):undefined});
-    if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
+    if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',rules:[{title:'夜晚行动',items:['瞌睡鼠独自醒来可以偷看骰子。']},{title:'胜负判定',items:['投出大盗则瞌睡鼠获胜。']}],settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
     if(url==='/lobby/rooms'&&!opts?.body)return {ok:true,json:async()=>clone(directory)};
     if(url.includes('/players/'))return {ok:true,json:async()=>({room_id:room?.id || null})};
     if(url.endsWith('/preview'))return {ok:true,json:async()=>clone(directory[0])};
@@ -81,7 +81,7 @@ test('password input and focus survive directory refresh',async()=>{
     await a.intervals[2]();await tick();
     assert.equal(a.w.document.querySelector('#password').value,'secret');assert.equal(a.w.document.activeElement.id,'password');
     assert.equal(a.calls.filter(c=>c.url.endsWith('/join')).length,0);
-    a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+    a.w.document.querySelector('#room-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
     assert.equal(a.calls.find(c=>c.url.endsWith('/join')).body.password,'secret');
   }finally{a.dom.window.close();}
 });
@@ -192,14 +192,44 @@ test('random names avoid occupied legacy variants and do not repeat before the p
  }finally{a.dom.window.close();}
 });
 
-test('joining with an occupied saved name opens a rename sheet and preserves identity',async()=>{
+test('joining with an occupied name automatically retries without a profile form',async()=>{
  const r={id:'654321',owner_name:'朋友',owner_avatar:'animal-01',game_id:'cheese',stage:'waiting',count:1,capacity:12,joinable:true,has_password:false};
  const a=await app(null,[r]);try{
   const original=a.w.fetch;let blocked=true;
   a.w.fetch=async(url,opts)=>{if(url.endsWith('/join')&&blocked){blocked=false;return {ok:false,json:async()=>({detail:{code:'nickname_taken',message:'昵称重名'}})};}return original(url,opts);};
-  a.w.document.querySelector('[data-join]').click();await tick();
-  const input=a.w.document.querySelector('#name');assert.ok(input);assert.notEqual(input.value,'房主');assert.notEqual(input.value,'朋友');assert.match(a.w.document.querySelector('[role=alert]').textContent,/重名/);
-  a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+  a.w.document.querySelector('[data-join]').click();await tick();await tick();
+  assert.equal(a.w.document.querySelector('#name'),null);assert.notEqual(a.w.localStorage.getItem('lobby_name'),'房主');assert.notEqual(a.w.localStorage.getItem('lobby_name'),'朋友');
   assert.equal(a.w.localStorage.getItem('lobby_player_id'),'p0');assert.equal(a.w.document.querySelector('[role=dialog]'),null);
+  assert.match(a.w.document.querySelector('#toast').textContent,/重名/);
+ }finally{a.dom.window.close();}
+});
+test('first visit requires a name or a random choice and cannot dismiss onboarding',async()=>{
+ const a=await app(null,[],'');try{
+  assert.equal(a.w.document.querySelector('#sheet-title').textContent,'先取个昵称吧');
+  assert.equal(a.w.document.querySelector('#name').value,'');assert.equal(a.w.document.querySelector('#save-profile').disabled,true);
+  assert.equal(a.w.document.querySelector('#close-sheet'),null);
+  a.w.document.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.ok(a.w.document.querySelector('[role=dialog]'));
+  a.w.document.querySelector('#create-room').click();assert.equal(a.w.document.querySelector('#room-form'),null);
+  a.w.document.querySelector('#random-name').click();const name=a.w.document.querySelector('#name').value;assert.ok(name);assert.equal(a.w.document.querySelector('#save-profile').disabled,false);
+  a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(a.w.localStorage.getItem('lobby_name'),name);assert.equal(a.w.document.querySelector('[role=dialog]'),null);
+ }finally{a.dom.window.close();}
+});
+test('room creation and password entry reuse the saved profile and expose no name/avatar fields',async()=>{
+ const a=await app(null,[]);try{
+  assert.equal(a.w.document.querySelector('[role=dialog]'),null);a.w.document.querySelector('#create-room').click();
+  assert.ok(a.w.document.querySelector('#room-form'));assert.ok(a.w.document.querySelector('#create-game'));assert.ok(a.w.document.querySelector('#password'));
+  assert.equal(a.w.document.querySelector('#name'),null);assert.equal(a.w.document.querySelector('.avatars'),null);
+ }finally{a.dom.window.close();}
+});
+test('waiting room shows full selected-game rules inline and keeps them in the rules dialog',async()=>{
+ const a=await app();try{
+  const text=a.w.document.querySelector('.waiting-rules').textContent;assert.match(text,/奶酪大盗.*游戏规则/);assert.match(text,/夜晚行动/);assert.match(text,/偷看骰子/);assert.match(text,/胜负判定/);assert.match(text,/骰子面数 6/);
+  a.w.document.querySelector('#open-rules').click();assert.match(a.w.document.querySelector('[role=dialog]').textContent,/偷看骰子/);
+ }finally{a.dom.window.close();}
+});
+test('restoring an existing room recovers its profile without showing first-visit onboarding',async()=>{
+ const a=await app(initial(),[],'');try{
+  assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');assert.ok(a.w.document.querySelector('#ready'));assert.equal(a.w.document.querySelector('[role=dialog]'),null);
  }finally{a.dom.window.close();}
 });

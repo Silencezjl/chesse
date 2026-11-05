@@ -50,3 +50,11 @@ body{background:radial-gradient(ellipse at 85% 0%,#eae4ff 0,transparent 400px),v
 .nickname-input button{flex-shrink:0;min-height:48px;padding:10px 14px}
 
 .nickname-input .nickname-editor{background:#fff}
+
+.waiting-rules{margin-top:20px}
+.waiting-rules h2{font-size:18px;margin-bottom:16px}
+.rules-content{display:grid;gap:16px;font-size:13px;line-height:1.8;color:var(--muted)}
+.rules-content h3{font-size:14px;color:var(--ink);margin-bottom:6px}
+.rules-content ul{margin:0;padding-left:20px}
+.rules-content li+li{margin-top:4px}
+.rules-settings{border-top:1px solid var(--line);padding-top:12px;font-size:12px}
