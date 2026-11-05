@@ -11,6 +11,24 @@ let socket = null, reconnect = null, connected = false, superseded = false, show
 let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
 let draftName = '', draftAvatar = '', password = '', selectedGame = '', targetRoom = null, gameConnected = false;
 let listing = false, lastFocus = null, restartChoose = false;
+const nicknamePool = Object.freeze([
+  "摸鱼小熊", "奶茶海獭", "脆皮企鹅", "发呆树懒", "飞奔小鸭", "偷吃仓鼠", "路过熊猫", "快乐水豚", "困困考拉", "暴走兔子",
+  "芝士狐狸", "饭团小狗", "布丁小猫", "糯米团子", "芋泥啵啵", "草莓泡芙", "蜜桃乌龙", "西瓜汽水", "可乐加冰", "冰糖雪梨",
+  "咸鱼翻身", "土豆队长", "番茄大王", "黄瓜骑士", "南瓜法师", "玉米超人", "香菜侦探", "蒜头军师", "豆芽选手", "洋葱学霸",
+  "饼干警长", "面包侠", "客串高手", "运气选手", "随缘玩家", "快乐躺平", "椅子冠军", "沙发土豆", "饭点战神", "夜宵达人",
+  "橘子汽船", "柠檬飞艇", "葡萄星球", "香蕉月亮", "菠萝宇航员", "荔枝骑手", "杨梅船长", "蓝莓水手", "椰子机长", "芒果探险家",
+  "迷路蘑菇", "散步云朵", "打盹月亮", "星星打嗝", "彩虹溜号", "太阳赖床", "流星摸鱼", "银河干饭", "微风串门", "雨点蹦迪",
+  "戏精小鹿", "社恐刺猬", "话痨鹦鹉", "佛系海豹", "傲娇松鼠", "佛脚袋鼠", "机智浣熊", "呆萌河马", "慢热乌龟", "冲浪鲸鱼",
+  "一把就睡", "再玩一局", "先吃口饭", "等我想想", "我有妙计", "全凭直觉", "今天手气", "牌桌锦鲤", "懵圈选手", "气氛担当",
+  "锅巴同学", "蛋挞老师", "麻薯学长", "酸奶学姐", "米糕同桌", "汤圆班长", "烧麦主任", "煎饺助教", "春卷校长", "馄饨教授",
+  "沙雕海鸥", "拖鞋大侠", "被窝富翁", "奶盖侦探", "薯条刺客", "薯片勇士", "螺蛳粉侠", "烤串诗人", "火锅精灵", "珍珠奶龙",
+]);
+function randomNickname() {
+  let next = nicknamePool[Math.floor(Math.random()*nicknamePool.length)] + String(Math.floor(Math.random()*100)).padStart(2,'0');
+  if(next===draftName) next=next.slice(0,-2)+String((Number(next.slice(-2))+1)%100).padStart(2,'0');
+  return next;
+}
+
 
 async function api(path, data) {
   const response = await fetch(`/lobby${path}`, data === undefined ? {} : {
@@ -101,7 +119,7 @@ async function refreshList() {
 }
 function openSheet(type, target=null) {
   lastFocus=document.activeElement?.id;sheet=type;error='';password='';targetRoom=target;
-  draftName=name;draftAvatar=avatar;render();
+  draftName=name || randomNickname();draftAvatar=avatar;render();
   root.querySelector('[role=dialog] input, [role=dialog] button')?.focus();
 }
 function closeSheet(){sheet=null;pendingKick=null;password='';error='';render();document.getElementById(lastFocus)?.focus();}
@@ -185,7 +203,7 @@ function sheetView() {
   else if(['create','join','profile'].includes(sheet)){
     title=sheet==='create'?'开一桌，等朋友':sheet==='join'?`加入${roomTitle(targetRoom)}`:'我的资料';
     content=`<form id="profile-form" class="profile-form">${sheet==='join'&&targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}
-    <label>你的昵称<input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></label><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}<span>${GameAvatars.label(a)}</span></button>`).join('')}</div>
+    <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
     ${sheet==='create'?`<label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label>`:''}
     ${sheet==='create'||sheet==='join'&&targetRoom.has_password?`<label>${sheet==='create'?'房间密码（选填）':'房间密码'}<input id="password" type="password" autocomplete="${sheet==='create'?'new-password':'off'}" maxlength="20" value="${esc(password)}" placeholder="${sheet==='create'?'留空，朋友可直接加入':'请输入房主设置的密码'}" ${sheet==='join'?'required':''}></label>`:''}
     <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button>${busy?'正在保存…':sheet==='create'?'创建房间':sheet==='join'?'加入房间':'保存资料'}</button></form>`;
@@ -218,6 +236,8 @@ function conceal(){gameShell.querySelector('iframe')?.contentWindow?.postMessage
 function render() {
   const focus=document.activeElement,saved=focus?.id?{id:focus.id,start:focus.selectionStart,end:focus.selectionEnd}:null;
   const dialog=root.querySelector('[role=dialog]'),scroll=dialog?.scrollTop || 0;
+  const avatarScroll=root.querySelector('.avatars')?.scrollTop || 0;
+  const pageScroll={x:window.scrollX,y:window.scrollY};
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
   root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><button class="profile-chip secondary" id="my-profile">${GameAvatars.html(avatar)}<span>${esc(name || '设置我的资料')}</span></button></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small></div></div><button class="secondary" id="show-room">${room.stage==='finished'?'本局结束 · 返回房间':'查看房间'}</button></div>`:room?roomView():homeView()}</div>${sheetView()}`;
@@ -225,7 +245,9 @@ function render() {
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
   const nextDialog=root.querySelector('[role=dialog]');if(nextDialog)nextDialog.scrollTop=scroll;
+  const nextAvatars=root.querySelector('.avatars');if(nextAvatars)nextAvatars.scrollTop=avatarScroll;
   if(saved){const el=document.getElementById(saved.id);if(el){el.focus({preventScroll:true});if(el.setSelectionRange&&saved.start!==null&&el.type!=='number')el.setSelectionRange(saved.start,saved.end);}}
+  if(window.scrollX!==pageScroll.x || window.scrollY!==pageScroll.y)window.scrollTo(pageScroll.x,pageScroll.y);
   updateCountdown();
 }
 function bindEvents() {
@@ -236,9 +258,13 @@ function bindEvents() {
   root.querySelectorAll('[data-create]').forEach(b=>b.onclick=()=>beginCreate(b.dataset.create));
   root.querySelectorAll('[data-join]').forEach(b=>b.onclick=()=>action(()=>beginJoin(b.dataset.join)));
   bind('close-sheet','click',closeSheet);bind('cancel-kick','click',closeSheet);
+  bind('random-name','click',()=>{draftName=randomNickname();document.getElementById('name').value=draftName;});
   bind('name','input',e=>draftName=e.target.value);bind('password','input',e=>password=e.target.value);
   bind('create-game','change',e=>selectedGame=e.target.value);
-  root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{draftAvatar=b.dataset.avatar;render();});
+  root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{
+    draftAvatar=b.dataset.avatar;
+    root.querySelectorAll('[data-avatar]').forEach(pick=>{const selected=pick.dataset.avatar===draftAvatar;pick.classList.toggle('active',selected);pick.setAttribute('aria-pressed',String(selected));});
+  });
   bind('profile-form','submit',e=>{e.preventDefault();action(submitProfile);});
   bind('room-menu','click',()=>openSheet('menu'));bind('open-settings','click',()=>openSheet('settings'));bind('open-rules','click',()=>openSheet('rules'));bind('game-picker','click',()=>openSheet('games'));
   bind('edit-profile','click',()=>openSheet('profile'));bind('edit-password','click',()=>openSheet('password'));

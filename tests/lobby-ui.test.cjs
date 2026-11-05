@@ -133,3 +133,37 @@ test('avatar URLs stay local for legacy values, supported IDs and untrusted valu
     assert.equal(a.w.GameAvatars.ids.length,30);
   }finally{a.dom.window.close();}
 });
+test('animal selection and room refresh preserve picker scroll, dialog scroll and focus',async()=>{
+  const a=await app();try{
+    a.w.document.querySelector('#my-profile').click();
+    const grid=a.w.document.querySelector('.avatars'),dialog=a.w.document.querySelector('[role=dialog]');
+    grid.scrollTop=120;dialog.scrollTop=80;
+    const choice=a.w.document.querySelector('[data-avatar="animal-30"]');choice.focus();choice.click();
+    assert.equal(a.w.document.querySelector('.avatars'),grid);
+    assert.equal(grid.scrollTop,120);assert.equal(choice.getAttribute('aria-pressed'),'true');
+    assert.equal(grid.textContent.trim(),'');assert.equal(grid.querySelectorAll('[aria-label]').length,30);
+    const next=initial();next.members.p1.ready=true;a.setRoom(next);
+    assert.equal(a.w.document.querySelector('.avatars').scrollTop,120);
+    assert.equal(a.w.document.querySelector('[role=dialog]').scrollTop,80);
+    assert.equal(a.w.document.activeElement.id,'pick-animal-30');
+    assert.equal(a.w.document.activeElement.getAttribute('aria-pressed'),'true');
+  }finally{a.dom.window.close();}
+});
+test('random nicknames offer 100 distinct bases and two digits without saving until submission',async()=>{
+  const a=await app();try{
+    a.w.document.querySelector('#my-profile').click();const names=new Set();
+    for(let i=0;i<100;i++){
+      let call=0;a.w.Math.random=()=>call++%2===0?(i+.1)/100:0;
+      a.w.document.querySelector('#random-name').click();
+      const value=a.w.document.querySelector('#name').value;
+      assert.match(value,/^.+00$/);assert.ok(value.length<=12);names.add(value.slice(0,-2));
+    }
+    assert.equal(names.size,100);assert.equal(a.w.localStorage.getItem('lobby_name'),'房主');
+    assert.equal(a.calls.filter(c=>c.url.endsWith('/profile')).length,0);
+    const draft=a.w.document.querySelector('#name').value;a.setRoom(initial());
+    assert.equal(a.w.document.querySelector('#name').value,draft);
+    a.w.document.querySelector('#profile-form').dispatchEvent(new a.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+    assert.equal(a.w.localStorage.getItem('lobby_name'),draft);
+    assert.equal(a.calls.find(c=>c.url.endsWith('/profile')).body.name,draft);
+  }finally{a.dom.window.close();}
+});
