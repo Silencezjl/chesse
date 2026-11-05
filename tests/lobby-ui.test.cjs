@@ -15,6 +15,7 @@ async function app(start=initial(), directory=[], savedName='房主') {
     calls.push({url,body:opts?.body?JSON.parse(opts.body):undefined});
     if(url==='/lobby/games')return {ok:true,json:async()=>[{id:'cheese',title:'奶酪大盗',icon:'/assets/game-cheese-indigo-v1.webp',minimum:5,maximum:8,entry:'/cheese/',description:'推理',tag:'推理',rules:[{title:'夜晚行动',items:['瞌睡鼠独自醒来可以偷看骰子。']},{title:'胜负判定',items:['投出大盗则瞌睡鼠获胜。']}],settings:[{key:'max_dice',label:'骰子面数',type:'number',min:6,max:10,default:6}]}]};
     if(url==='/lobby/rooms'&&!opts?.body)return {ok:true,json:async()=>clone(directory)};
+    if(url==='/lobby/rooms'&&opts?.body){const values=JSON.parse(opts.body);room=initial();room.game_id=values.game_id;room.stage=values.game_id?'waiting':'choosing';room.members.p0.name=values.name;room.members.p0.avatar=values.avatar;room.seats=['p0'];delete room.members.p1;}
     if(url.includes('/players/'))return {ok:true,json:async()=>({room_id:room?.id || null})};
     if(url.endsWith('/preview'))return {ok:true,json:async()=>clone(directory[0])};
     if(url.endsWith('/join')){const values=JSON.parse(opts.body);room={...initial(),id:directory[0].id};room.members.p0.name=values.name;room.members.p0.avatar=values.avatar;}
@@ -215,11 +216,13 @@ test('first visit requires a name or a random choice and cannot dismiss onboardi
   assert.equal(a.w.localStorage.getItem('lobby_name'),name);assert.equal(a.w.document.querySelector('[role=dialog]'),null);
  }finally{a.dom.window.close();}
 });
-test('room creation and password entry reuse the saved profile and expose no name/avatar fields',async()=>{
+test('one click creates an unlocked room without a form and password settings stay inside the room',async()=>{
  const a=await app(null,[]);try{
-  assert.equal(a.w.document.querySelector('[role=dialog]'),null);a.w.document.querySelector('#create-room').click();
-  assert.ok(a.w.document.querySelector('#room-form'));assert.ok(a.w.document.querySelector('#create-game'));assert.ok(a.w.document.querySelector('#password'));
-  assert.equal(a.w.document.querySelector('#name'),null);assert.equal(a.w.document.querySelector('.avatars'),null);
+  a.w.document.querySelector('#create-room').click();a.w.document.querySelector('#create-room').click();await tick();await tick();
+  const requests=a.calls.filter(c=>c.url==='/lobby/rooms'&&c.body);assert.equal(requests.length,1);
+  assert.equal(requests[0].body.name,'房主');assert.equal(requests[0].body.game_id,null);assert.equal(requests[0].body.password,undefined);
+  assert.equal(a.w.document.querySelector('#room-form'),null);assert.equal(a.w.document.querySelector('#name'),null);assert.equal(a.w.document.querySelector('#password'),null);
+  a.w.document.querySelector('#room-menu').click();a.w.document.querySelector('#edit-password').click();assert.ok(a.w.document.querySelector('#password-form'));assert.ok(a.w.document.querySelector('#password'));
  }finally{a.dom.window.close();}
 });
 test('waiting room shows full selected-game rules inline and keeps them in the rules dialog',async()=>{

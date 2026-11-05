@@ -9,12 +9,14 @@ const assert=require('node:assert/strict');
  const req=async(path,body)=>{const r=await fetch(base+'/lobby'+path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
  try{
  const host=await context();await host.screenshot({path:'/tmp/chesse-home-360.png'});
- await host.locator('#create-room').click();assert.equal(await host.locator('#name').count(),0);assert.equal(await host.locator('.avatars').count(),0);await host.locator('#create-game').selectOption('holdem');await host.locator('#password').fill('1234');await host.locator('#room-form button').last().click();await host.locator('#ready').waitFor();
+ await host.locator('#create-room').click();await host.locator('#room-menu').waitFor();assert.equal(await host.locator('#name').count(),0);assert.equal(await host.locator('#password').count(),0);await host.locator('#game-picker').click();await host.locator('[data-game="holdem"]').click();await host.locator('#ready').waitFor();
  rid=await host.evaluate(()=>localStorage.getItem('lobby_room_id'));const hostId=await host.evaluate(()=>localStorage.getItem('lobby_player_id'));
+ assert.equal((await req(`/rooms/${rid}?player_id=${hostId}`)).has_password,false);
  await host.screenshot({path:'/tmp/chesse-room-360.png'});
  for(const [game,phrase] of [['cheese','独自醒来'],['bluff','质疑到瞎掰人'],['holdem','实体扑克牌']]){await host.locator('#game-picker').click();await host.locator(`[data-game="${game}"]`).click();await host.locator('.waiting-rules').getByText(phrase,{exact:false}).first().waitFor();}
  for(const width of [320,360,390,430]){await host.setViewportSize({width,height:800});assert.ok(await host.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow rules ${width}`);}
  await host.setViewportSize({width:360,height:800});
+ await host.locator('#room-menu').click();await host.locator('#edit-password').click();await host.locator('#password').fill('1234');await host.locator('#password-form button').last().click();await host.locator('[role=dialog]').waitFor({state:'detached'});assert.equal((await req(`/rooms/${rid}?player_id=${hostId}`)).has_password,true);
  const guest=await context('朋友甲');await guest.locator(`[data-join="${rid}"]`).click();assert.equal(await guest.locator('#name').count(),0);await guest.locator('#password').fill('wrong');await guest.locator('#room-form button').last().click();await guest.locator('[role=alert]').waitFor();await guest.locator('#password').fill('1234');await guest.locator('#room-form button').last().click();await guest.locator('#ready').waitFor();
  await guest.reload();await guest.locator('#ready').waitFor();assert.equal(await guest.evaluate(()=>localStorage.getItem('lobby_name')),'朋友甲');
  await host.locator('#ready').click();await guest.locator('#ready').click();await host.locator('iframe').waitFor();
@@ -32,6 +34,6 @@ const assert=require('node:assert/strict');
   });
  },{rid,members,base});assert.ok(end);await socketPage.close();
  for(const pid of [...members].reverse())await req(`/rooms/${rid}/leave`,{player_id:pid});rid=null;
- assert.deepEqual(errors,[]);console.log('PASS: mandatory first profile, simplified room forms, all three inline game rules, password retry, saved profile/reload, Holdem iframe, candidate privacy/leave, 320–430px layout, cleanup');
+ assert.deepEqual(errors,[]);console.log('PASS: mandatory first profile, one-click unlocked creation, in-room password settings, all three inline game rules, password retry, saved profile/reload, Holdem iframe, candidate privacy/leave, 320–430px layout, cleanup');
  }finally{if(rid)console.log('Room requiring cleanup:',rid);await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

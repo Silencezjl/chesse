@@ -9,7 +9,7 @@ let name = PlayerNames.text(localStorage.getItem('lobby_name')).trim(), avatar =
 let games = [], rooms = [], room = null, error = '', listError = '', busy = false, booting = true;
 let socket = null, reconnect = null, connected = false, superseded = false, showGame = true, mountedSession = '';
 let settingsDraft = {}, draftKey = '', serverOffset = 0, sheet = null, pendingKick = null;
-let draftName = '', draftAvatar = '', password = '', selectedGame = '', targetRoom = null, gameConnected = false;
+let draftName = '', draftAvatar = '', password = '', targetRoom = null, gameConnected = false;
 let listing = false, lastFocus = null, restartChoose = false;
 const rejectedNames = new Set();
 const randomNickname = () => PlayerNames.random(draftName,[...Object.entries(room?.members || {}).filter(([id])=>id!==playerId).map(([,p])=>p.name),...rejectedNames,...(sheet==='join'&&targetRoom?.owner_name?[targetRoom.owner_name]:[])]);
@@ -108,7 +108,10 @@ function openSheet(type, target=null) {
   (root.querySelector('[role=dialog] input') || root.querySelector('[role=dialog] button'))?.focus({preventScroll:true});
 }
 function closeSheet(){if(sheet==='onboarding')return;sheet=null;pendingKick=null;password='';error='';render();document.getElementById(lastFocus)?.focus();}
-function beginCreate(gameId='') {if(!name){openSheet('onboarding');return;}selectedGame=gameId;openSheet('create');}
+function beginCreate(gameId='') {
+  if(!name){openSheet('onboarding');return;}
+  return action(async()=>{const created=await api('/rooms',{...profile(),game_id:gameId || null});await loadRoom(created.id);sheet=null;});
+}
 async function joinWithSavedProfile(target, roomPassword='') {
   const original=name;let nextName=name;
   for(let attempt=0;attempt<13;attempt++){
@@ -139,9 +142,7 @@ async function submitProfile() {
 }
 async function submitRoom() {
   if(!name){openSheet('onboarding');return;}
-  if(sheet==='create'){
-    const created=await api('/rooms',{...profile(),game_id:selectedGame || null,password});await loadRoom(created.id);
-  }else await joinWithSavedProfile(targetRoom,password);
+  await joinWithSavedProfile(targetRoom,password);
   sheet=null;password='';
 }
 
@@ -150,11 +151,11 @@ async function roomAction(path,body={}) {
   const next=await api(`/rooms/${room.id}/${path}`,{player_id:playerId,...body});if(next?.id)updateRoom(next);
 }
 function homeView() {
-  return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room">＋ 创建房间</button></section>
+  return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room" ${busy?'disabled':''}>＋ 创建房间</button></section>
   <div class="section-head"><h2>房间列表 <small>${rooms.length} 间</small></h2><button class="secondary" id="refresh-list">刷新</button></div>
   ${listError?`<div class="error" role="alert">${esc(listError)} · 点击刷新重试</div>`:''}
   <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${GameAvatars.html(r.owner_avatar)}</div><div class="room-summary"><h3>${PlayerNames.html(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<div class="empty-state" role="status"><p class="muted">暂无房间，创建后会显示在这里。</p></div>`}</div>
-  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}">${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
+  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}" ${busy?'disabled':''}>${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
 }
 function settingsView() {
   const g=info(room.game_id);if(!g)return '';
@@ -211,8 +212,6 @@ function sheetView() {
     content=`<form id="profile-form" class="profile-form">${sheet==='onboarding'?'<p class="muted">输入昵称，或点“随机”选一个。设置一次，之后开房、加入都不用再填。</p>':''}
     <div class="nickname-field"><label for="name">你的昵称</label><div class="nickname-input"><div class="nickname-editor"><input id="name" autocomplete="nickname" maxlength="12" value="${esc(draftName)}" placeholder="朋友怎么称呼你？" required></div><button type="button" class="secondary" id="random-name" aria-label="随机生成昵称">随机</button></div></div><p class="avatar-heading">选择动物头像 <small>30 款 · 上下滑动查看更多</small></p><div class="avatars" role="group" aria-label="动物头像">${avatars.map(a=>`<button type="button" class="avatar-pick ${GameAvatars.normalize(draftAvatar)===a?'active':''}" id="pick-${a}" data-avatar="${a}" aria-label="${GameAvatars.label(a)}" aria-pressed="${GameAvatars.normalize(draftAvatar)===a}">${GameAvatars.html(a)}</button>`).join('')}</div>
     <p class="muted">昵称和头像会保存在这个设备，下次自动使用。</p><button id="save-profile" ${sheet==='onboarding'&&!draftName.trim()?'disabled':''}>${busy?'正在保存…':sheet==='onboarding'?'进入大厅':'保存资料'}</button></form>`;
-  }else if(sheet==='create'){
-    title='创建房间';content=`<form id="room-form" class="stack"><label>今晚玩什么<select id="create-game"><option value="">先建房，再决定</option>${games.map(g=>`<option value="${g.id}" ${selectedGame===g.id?'selected':''}>${esc(g.title)} · ${g.minimum}–${g.maximum} 人</option>`).join('')}</select></label><label>房间密码（选填）<input id="password" type="password" autocomplete="new-password" maxlength="20" value="${esc(password)}" placeholder="留空，朋友可直接加入"></label><button>${busy?'正在创建…':'创建房间'}</button></form>`;
   }else if(sheet==='join'){
     title=`加入${roomTitle(targetRoom)}`;content=`<form id="room-form" class="stack">${targetRoom.stage==='playing'?'<p class="notice">这局正在进行，加入后等待下一局。</p>':''}<label>房间密码<input id="password" type="password" autocomplete="off" maxlength="20" value="${esc(password)}" placeholder="请输入房主设置的密码" required></label><button>${busy?'正在加入…':'加入房间'}</button></form>`;
   }else if(sheet==='settings'){title='本局设置';content=settingsView();}
@@ -269,7 +268,6 @@ function bindEvents() {
   bind('close-sheet','click',closeSheet);bind('cancel-kick','click',closeSheet);
   bind('random-name','click',()=>{draftName=randomNickname();document.getElementById('name').value=draftName;document.getElementById('save-profile').disabled=busy;});
   bind('name','input',e=>{draftName=e.target.value;const save=document.getElementById('save-profile');if(save)save.disabled=busy||!draftName.trim();});bind('password','input',e=>password=e.target.value);
-  bind('create-game','change',e=>selectedGame=e.target.value);
   root.querySelectorAll('[data-avatar]').forEach(b=>b.onclick=()=>{
     draftAvatar=b.dataset.avatar;
     root.querySelectorAll('[data-avatar]').forEach(pick=>{const selected=pick.dataset.avatar===draftAvatar;pick.classList.toggle('active',selected);pick.setAttribute('aria-pressed',String(selected));});
