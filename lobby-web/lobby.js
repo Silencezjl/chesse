@@ -336,6 +336,9 @@ function bindEvents() {
 function updateCountdown(){const el=document.getElementById('countdown-number');if(el&&room?.countdown)el.textContent=Math.max(0,Math.ceil((room.countdown.deadline*1000-Date.now()-serverOffset)/1000));}
 setInterval(updateCountdown,100);
 setInterval(probeLatency,5000);
+// Preserve the existing room heartbeat while latency sampling is paused in background.
+function keepHiddenRoomAlive(){if(document.hidden&&connected&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'ping'}));}
+setInterval(keepHiddenRoomAlive,15000);
 setInterval(()=>{if(!document.hidden){if(room)refreshRoom();else refreshList();}},5000);
 window.addEventListener('offline',()=>resetLatency('offline'));
 window.addEventListener('online',()=>{probeLatency();if(room&&!connected&&!superseded)connect();else if(!room)refreshList();});

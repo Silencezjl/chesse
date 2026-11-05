@@ -271,3 +271,13 @@ test('in-game toolbar shows server RTT without replacing the game iframe',async(
   a.w.dispatchEvent(new a.w.Event('offline'));assert.match(a.w.document.querySelector('.game-toolbar .latency-label').textContent,/未连接/);
  }finally{a.dom.window.close();}
 });
+
+test('background tabs pause latency sampling while retaining the original room heartbeat',async()=>{
+ const a=await app();try{
+  const socket=a.sockets.at(-1);Object.defineProperty(a.w.document,'hidden',{get:()=>true,configurable:true});
+  a.w.document.dispatchEvent(new a.w.Event('visibilitychange'));assert.match(a.w.document.querySelector('.latency-label').textContent,/已暂停/);
+  const count=socket.sent.length;a.intervals.find(fn=>fn.name==='keepHiddenRoomAlive')();assert.equal(socket.sent.length,count+1);assert.equal(socket.sent.at(-1).type,'ping');assert.equal(socket.sent.at(-1).id,undefined);
+  socket.onmessage({data:JSON.stringify({type:'pong',id:null})});assert.match(a.w.document.querySelector('.latency-label').textContent,/已暂停/);
+  await a.intervals.find(fn=>fn.name==='probeLatency')();assert.equal(socket.sent.length,count+1);
+ }finally{a.dom.window.close();}
+});
