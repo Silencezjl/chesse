@@ -1,0 +1,191 @@
+{
+  "pack": "Animal Pack Redux",
+  "author": "Kenney Vleugels",
+  "license": "CC0 1.0",
+  "source": "https://opengameart.org/content/animal-pack-redux",
+  "archive": "https://opengameart.org/sites/default/files/kenney_animalPackRedux.zip",
+  "archive_sha256": "03cc5aa8ae80fabd4c711040e7beee34b09f2373a05d9e871dccea00d289b651",
+  "variant": "Round (outline)",
+  "assets": [
+    {
+      "id": "animal-01",
+      "name": "小兔子",
+      "source": "PNG/Round (outline)/rabbit.png",
+      "sha256": "b9a5be1df00b532df434c3b25c0f539af42ba39cc6cd173f72d5354f5056ef6d"
+    },
+    {
+      "id": "animal-02",
+      "name": "熊猫",
+      "source": "PNG/Round (outline)/panda.png",
+      "sha256": "8234ee9b045a11bdda8aeaf20eb494ffbc7434173e038e319508d1d233a9c473"
+    },
+    {
+      "id": "animal-03",
+      "name": "小狗",
+      "source": "PNG/Round (outline)/dog.png",
+      "sha256": "2304e25d32ce81ae99e597b499a3a0388ba14dc37e9c44b3716880d62915a59f"
+    },
+    {
+      "id": "animal-04",
+      "name": "猫头鹰",
+      "source": "PNG/Round (outline)/owl.png",
+      "sha256": "04d831bbedf6e7f31a50f66b416c66eee044a32a7adb2d5bae4adcba894ed464"
+    },
+    {
+      "id": "animal-05",
+      "name": "企鹅",
+      "source": "PNG/Round (outline)/penguin.png",
+      "sha256": "05dc720a6390fe749a1009df01793e675db0ae651a8a7b4bb9285b26adcf6728"
+    },
+    {
+      "id": "animal-06",
+      "name": "树懒",
+      "source": "PNG/Round (outline)/sloth.png",
+      "sha256": "4661f6ff61e19e04f9af93e77fa6af1a6c7c396b7b29961a0af99914d3b86a0e"
+    },
+    {
+      "id": "animal-07",
+      "name": "小熊",
+      "source": "PNG/Round (outline)/bear.png",
+      "sha256": "1875c2fef55ad33c5bacb80f8621b4decf6652c1b9467ad3047a8916f01239f9"
+    },
+    {
+      "id": "animal-08",
+      "name": "小鸡",
+      "source": "PNG/Round (outline)/chick.png",
+      "sha256": "85049195d755d142bba24aebd0036a41888accd8147b11163f642e1c981f5d80"
+    },
+    {
+      "id": "animal-09",
+      "name": "青蛙",
+      "source": "PNG/Round (outline)/frog.png",
+      "sha256": "c31e89fddae08a07df84b37cd07294ce5ed031616b9d5ed0409524ab3f4846e7"
+    },
+    {
+      "id": "animal-10",
+      "name": "猴子",
+      "source": "PNG/Round (outline)/monkey.png",
+      "sha256": "6f25390543561ab43b25c7d957257168b3f008fd6b980fbeb5dc0f19e89bd3a5"
+    },
+    {
+      "id": "animal-11",
+      "name": "小鸭",
+      "source": "PNG/Round (outline)/duck.png",
+      "sha256": "f9427de04dae1420393e5ba4fd7fbf3b02122a30d832f825a5134258e1602e50"
+    },
+    {
+      "id": "animal-12",
+      "name": "小猪",
+      "source": "PNG/Round (outline)/pig.png",
+      "sha256": "aedb0e22781d860ff473dd78cdd5337523ab40c053a3f4cba829999ba7773bea"
+    },
+    {
+      "id": "animal-13",
+      "name": "奶牛",
+      "source": "PNG/Round (outline)/cow.png",
+      "sha256": "3b1957949750620494d337236cc9410a33071352564d7b195db87113805d21eb"
+    },
+    {
+      "id": "animal-14",
+      "name": "长颈鹿",
+      "source": "PNG/Round (outline)/giraffe.png",
+      "sha256": "7e5526d3f8e34c4267f8d1bfc15027b4996b74aa8d8794f94c9cf3cfee0d9085"
+    },
+    {
+      "id": "animal-15",
+      "name": "大象",
+      "source": "PNG/Round (outline)/elephant.png",
+      "sha256": "444547f93fa0f02c426b40b9d0af0164866151dd2e218871c5210203f0ca1fb0"
+    },
+    {
+      "id": "animal-16",
+      "name": "河马",
+      "source": "PNG/Round (outline)/hippo.png",
+      "sha256": "a420fd0177ca6da672686ce5c74beeb8a858a62c34bb5ea4e8042a4e58a55a7b"
+    },
+    {
+      "id": "animal-17",
+      "name": "小马",
+      "source": "PNG/Round (outline)/horse.png",
+      "sha256": "8a4dfb8e31c6fc988fbd551a9a88b803903e1c4ad01c7f8fbe40a2a2fe9d4eba"
+    },
+    {
+      "id": "animal-18",
+      "name": "驼鹿",
+      "source": "PNG/Round (outline)/moose.png",
+      "sha256": "5e976cda95c3b0266e4b6b8309632d580c2c3b9d140fc0d81f625aa7b725d80b"
+    },
+    {
+      "id": "animal-19",
+      "name": "水牛",
+      "source": "PNG/Round (outline)/buffalo.png",
+      "sha256": "d4169c51e712e644a30640b9280e842c1ad4aa98d0722c7e814b7d7a830d5033"
+    },
+    {
+      "id": "animal-20",
+      "name": "山羊",
+      "source": "PNG/Round (outline)/goat.png",
+      "sha256": "1396df3ae6c963706e93ce4b3fcfd98b62de839b1ea3c3899ee3f4a4abc08bea"
+    },
+    {
+      "id": "animal-21",
+      "name": "大猩猩",
+      "source": "PNG/Round (outline)/gorilla.png",
+      "sha256": "df17f378c7376b22b4cb9e952bc81a2c9b17d54a0268abfd74722f3053dca1a4"
+    },
+    {
+      "id": "animal-22",
+      "name": "鳄鱼",
+      "source": "PNG/Round (outline)/crocodile.png",
+      "sha256": "a7bb43c3eaa28e2fe91d5ffb7510fc99819c8c8fa12bc31a63c113812759776a"
+    },
+    {
+      "id": "animal-23",
+      "name": "犀牛",
+      "source": "PNG/Round (outline)/rhino.png",
+      "sha256": "d77a54b24f7472f847d1ed4bf0730ec1eed8e789e998b0a0ff0abb86eb92cfb0"
+    },
+    {
+      "id": "animal-24",
+      "name": "独角鲸",
+      "source": "PNG/Round (outline)/narwhal.png",
+      "sha256": "cebad4e729ce0c1cf12a894e4ab2c55aa00588bc1d19802c89179dd5b9ac2105"
+    },
+    {
+      "id": "animal-25",
+      "name": "海象",
+      "source": "PNG/Round (outline)/walrus.png",
+      "sha256": "15871e40097b96ad3f99491a88bab70dbd7d1fc350dc09747380a7f18b481c8b"
+    },
+    {
+      "id": "animal-26",
+      "name": "鲸鱼",
+      "source": "PNG/Round (outline)/whale.png",
+      "sha256": "a1e15b57b6909290666cfc1ef3d7dcb80108780e56fd4aeb0d7975d78b7481f3"
+    },
+    {
+      "id": "animal-27",
+      "name": "斑马",
+      "source": "PNG/Round (outline)/zebra.png",
+      "sha256": "905e18f8e28cf62055cb3fa4e5ee9a1d4e544dcc46d535bbf00ba3047ba798c9"
+    },
+    {
+      "id": "animal-28",
+      "name": "鹦鹉",
+      "source": "PNG/Round (outline)/parrot.png",
+      "sha256": "bfa0a34583fba4149aa6fae4c35e89f89836faa4f2f83b2c2fd0fe5dac13d131"
+    },
+    {
+      "id": "animal-29",
+      "name": "母鸡",
+      "source": "PNG/Round (outline)/chicken.png",
+      "sha256": "f74736f17fec2a51324f1538627b544793443d226db19330bb34e14759115e88"
+    },
+    {
+      "id": "animal-30",
+      "name": "小蛇",
+      "source": "PNG/Round (outline)/snake.png",
+      "sha256": "89cf220b1ba776bacbe1b06586009950f805c2ee3944e46e2b4dc196670844bd"
+    }
+  ]
+}

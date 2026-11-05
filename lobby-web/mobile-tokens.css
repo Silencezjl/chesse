@@ -1,4 +1,4 @@
 :root{--mobile-font:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;--mobile-ink:#28243d;--mobile-muted:#716b87;--mobile-background:#f6f5fc;--mobile-surface:#ffffff;--mobile-accent:#5945ce;--mobile-line:#e4e0f1;--mobile-accent-soft:#eeeafe;--mobile-accent-strong:#4432ad;--mobile-highlight:#d66b4c;--mobile-dark:#171426;--mobile-radius:18px;--mobile-space:16px;--mobile-touch:44px;--mobile-primary-touch:48px}
 button,input,select{-webkit-tap-highlight-color:transparent}button{min-height:var(--mobile-touch)}input,select{font-size:16px}button:focus-visible{outline:3px solid #f18d70;outline-offset:3px}button:disabled{cursor:default}body{overflow-wrap:anywhere}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
-.user-avatar{display:inline-block;vertical-align:middle;object-fit:cover;border-radius:50%;flex-shrink:0}
+.user-avatar{display:inline-block;vertical-align:middle;object-fit:contain;border-radius:10px;padding:3px;background:#eeeafe;flex-shrink:0}

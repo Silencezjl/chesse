@@ -123,7 +123,7 @@ LOBBY_URL=http://localhost:18088 node scripts/smoke_mobile_games.cjs
 
 两个脚本仅允许 18088/18089 隔离端口，分别验证房间/密码/设备资料/候场及奶酪、瞎掰王的完整手机操作。截图写入 `/tmp/chesse-*-360.png`；成功后通过正常离房接口清理自身房间。
 
-站点及三款游戏使用统一的插画标识，位于 `lobby-web/assets/`。`*-v1.png` 为透明原图，`*-v1.webp` 为 512px 网页版本（单张约 31–38KB），`party-touch-v1.png` 为手机主屏幕图标。大厅、等待室、游戏选择与标签页均使用图片；用户头像统一使用本地 SVG 图片。游戏目录的 `icon` 字段现为同源图片路径。
+站点及三款游戏使用统一的插画标识，位于 `lobby-web/assets/`。`*-v1.png` 为透明原图，`*-v1.webp` 为 512px 网页版本（单张约 31–38KB），`party-touch-v1.png` 为手机主屏幕图标。大厅、等待室、游戏选择与标签页均使用图片；用户头像统一使用本地动物 PNG 图片。游戏目录的 `icon` 字段现为同源图片路径。
 
 自动解散的实际后台任务可用以下专用实例冒烟验证：
 
@@ -135,4 +135,4 @@ LOBBY_URL=http://localhost:18089 python scripts/smoke_empty_rooms.py
 
 当前启用的 Logo 与三款游戏图标为 `lobby-web/assets/*-indigo-v1.webp`，与蓝紫界面配色统一；相应透明 PNG 原图及旧版图标均保留。主屏幕图标使用 `party-touch-indigo-v1.png`。
 
-用户头像采用 DiceBear Thumbs（CC0 1.0），8 张 SVG 存放在 `lobby-web/assets/avatars/`，来源和授权记录见同目录 `sources.json`、`LICENSE.txt`。资料保存 `avatar-01` 至 `avatar-08` 等短标识；`/avatars.js` 统一解析本地路径，兼容旧 emoji 资料，无需修改已有 Redis 数据。大厅、等待室与三款游戏均渲染图片，用户姓名和头像的设备保存逻辑不变。顶部仅保留 Logo，无房间时使用紧凑横向提示。
+用户头像采用 Kenney Animal Pack Redux（CC0 1.0），30 种不同动物的带描边圆形版本存放在 `lobby-web/assets/avatars/animals-v1/`，来源和授权记录见同目录 `sources.json`、`License.txt`。资料保存 `animal-01` 至 `animal-30` 等短标识；`/avatars.js` 统一解析本地路径，兼容旧 emoji 和 `avatar-01` 至 `avatar-08` 资料，无需修改已有 Redis 数据。选择器提供动物名称和独立滚动区域；图片完整展示耳朵和角，不裁切。大厅、等待室与三款游戏均渲染图片，用户姓名和头像的设备保存逻辑不变。顶部仅保留 Logo，无房间时使用紧凑横向提示。
