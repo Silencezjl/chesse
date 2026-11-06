@@ -115,16 +115,22 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
     if state['phase'] == 'finished':
         raise RuleError('游戏已经结束')
     is_judge = player == state['judge']
-    if kind == 'draw':
+    if kind in ('draw', 'select'):
         if not is_judge or state['phase'] != 'choose':
             raise RuleError('请等待大聪明选择题目')
-        difficulty = data.get('difficulty')
-        if not isinstance(difficulty, int) or isinstance(difficulty, bool) or difficulty not in (1, 2, 3):
-            raise RuleError('请选择 1–3 分难度')
-        pool = [q for q in QUESTIONS if q['difficulty'] == difficulty and q['id'] not in state['used']]
-        if not pool:
-            raise RuleError('该难度题库已用完，请选择其他难度')
-        q = rng.choice(pool)
+        if kind == 'select':
+            question_id = data.get('question_id')
+            q = next((item for item in QUESTIONS if item['id'] == question_id and item['id'] not in state['used']), None)
+            if q is None:
+                raise RuleError('题目不存在或本局已使用，请重新选择')
+        else:
+            difficulty = data.get('difficulty')
+            if not isinstance(difficulty, int) or isinstance(difficulty, bool) or difficulty not in (1, 2, 3):
+                raise RuleError('请选择 1–3 分难度')
+            pool = [item for item in QUESTIONS if item['difficulty'] == difficulty and item['id'] not in state['used']]
+            if not pool:
+                raise RuleError('该难度题库已用完，请选择其他难度')
+            q = rng.choice(pool)
         state['used'].append(q['id'])
         state.update(question_id=q['id'], phase='prepare', ready=[])
     elif kind == 'skip':
@@ -196,6 +202,9 @@ def view(state, player, now=None):
             'available': {d: sum(q['difficulty'] == d and q['id'] not in state['used'] for q in QUESTIONS)
                           for d in (1, 2, 3)},
             'challenge_made': state['challenge'] is not None}
+    if player == state['judge'] and state['phase'] == 'choose':
+        info['question_bank'] = [{k: item[k] for k in ('id', 'title', 'difficulty', 'hints')}
+                                 for item in QUESTIONS if item['id'] not in state['used']]
     if player in state['players']:
         info.update(my_role=state['roles'][player], i_ready=player in state['ready'])
         if player == state['judge'] and state['challenge']:

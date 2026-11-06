@@ -44,6 +44,28 @@ class BluffTest(unittest.TestCase):
         engine.act(s,judge,'skip'); engine.act(s,judge,'draw',{'difficulty':1},rng=First())
         self.assertNotEqual(first,s['question_id']); self.assertIn(first,s['used'])
         engine.act(s,'p0','terminate');self.assertTrue(s['terminated'])
+    def test_question_bank_selection_and_privacy(self):
+        s = self.state(); judge = s['judge']
+        bank = engine.view(s, judge)['question_bank']
+        self.assertEqual(len(bank), 60)
+        self.assertTrue(all(set(q) == {'id', 'title', 'difficulty', 'hints'} for q in bank))
+        for player in [p for p in s['players'] if p != judge] + ['spectator']:
+            self.assertNotIn('question_bank', engine.view(s, player))
+            with self.assertRaises(engine.RuleError): engine.act(s, player, 'select', {'question_id': bank[0]['id']})
+        for question_id in ('missing', None, [], {'x': 1}):
+            with self.assertRaises(engine.RuleError): engine.act(s, judge, 'select', {'question_id': question_id})
+        choice = bank[25]
+        engine.act(s, judge, 'select', {'question_id': choice['id']})
+        self.assertEqual(s['question_id'], choice['id'])
+        for player in s['players']:
+            v = engine.view(s, player)
+            self.assertEqual(v['question']['title'], choice['title'])
+            self.assertNotIn('question_bank', v)
+            self.assertNotIn('answer', v)
+        engine.act(s, judge, 'skip')
+        with self.assertRaises(engine.RuleError): engine.act(s, judge, 'select', {'question_id': choice['id']})
+        self.assertNotIn(choice['id'], [q['id'] for q in engine.view(s, judge)['question_bank']])
+
     def test_checkpoint_and_ties(self):
         s=self.state(); engine.act(s,s['judge'],'draw',{'difficulty':1},now=10,rng=First())
         for p in s['players']:engine.act(s,p,'ready',now=10)

@@ -46,8 +46,9 @@ try{for(const game of ['cheese','bluff']){
  }else{
   for(const f of frames)await f.locator('#role-toggle').waitFor();
   for(const f of frames)assert.equal(await f.locator('.role').count(),0);
-  const judgeIndex=await (async()=>{for(let i=0;i<count;i++)if(await frames[i].locator('.draw').count())return i;})();
-  await frames[judgeIndex].locator('.draw').first().click();
+  const judgeIndex=await (async()=>{for(let i=0;i<count;i++)if(await frames[i].locator('.bank-tab').count())return i;})();
+  await frames[judgeIndex].locator('[data-bank="1"]').click();
+  await frames[judgeIndex].locator('.question-option').first().click();
   await frames[0].locator('#ready').waitFor();
   for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:640});await assertBottom(frames[0],'#role-toggle');await assertBottom(frames[0],'#ready');}
   await pages[0].setViewportSize({width:360,height:800});

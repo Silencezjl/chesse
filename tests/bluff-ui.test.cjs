@@ -121,3 +121,24 @@ test('only the owner can open and confirm ending the game, including while pause
     assert.equal(game.messages[0].type, 'terminate');
   } finally { game.dom.window.close(); }
 });
+
+
+test('judge can browse a difficulty and select a particular question without exposing the bank to others', () => {
+  const game = openGame();
+  try {
+    const bank = [{id:'q1',title:'第一题',difficulty:1,hints:['方向']},{id:'q2',title:'第二题',difficulty:2,hints:[]}];
+    game.send({...state(),phase:'choose',judge:'p1',my_role:'judge',question_bank:bank});
+    assert.match(game.w.document.querySelector('header').textContent, /你是大聪明/);
+    assert.equal(game.w.document.querySelector('.question-option'), null);
+    game.w.document.querySelector('[data-bank="1"]').click();
+    assert.match(game.w.document.querySelector('.question-option').textContent, /第一题/);
+    assert.equal(game.w.document.querySelectorAll('.question-option').length, 1);
+    game.w.document.querySelector('[data-bank="2"]').click();
+    assert.match(game.w.document.querySelector('.question-option').textContent, /第二题/);
+    game.w.document.querySelector('[data-question="q2"]').click();
+    assert.deepEqual(JSON.parse(JSON.stringify(game.messages[0])), {type:'select',data:{question_id:'q2'}});
+    game.send({...state(),phase:'choose'});
+    assert.equal(game.w.document.querySelector('.judge-tag'), null);
+    assert.equal(game.w.document.querySelector('.question-picker'), null);
+  } finally { game.dom.window.close(); }
+});
