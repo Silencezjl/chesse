@@ -201,3 +201,5 @@
 - IP 证书通过 Certbot 5.4 的 shortlived profile 签发；生产 Compose 叠加 HTTPS 文件，原 8000/80 入口跳转 443，WebSocket 自动使用 wss。证书目录只读挂载，systemd 每天两次检查并自动续期和重载。
 
 本轮验证：69 项后端测试、38 项交互测试、TypeScript 和生产构建通过；浏览器模拟校验 320–430px、两套主题下结算展开宽度稳定、角色标签对比度 >=4.5、底栏按钮 48px。受信任 HTTPS 页面上已实际调用浏览器原生 Screen Wake Lock 并验证申请及释放成功，未伪造原生接口。
+
+线上已验证 HTTP/8000 到 HTTPS 跳转、Secure 身份 Cookie、真实原生常亮控制器申请及释放、四位虚拟玩家的 WSS 重连；证书 `renew --dry-run` 演练成功，systemd 续期服务 Result=success 且定时器 active。额外修复掉线/准备/投票状态标签和共犯遮罩的字体主题对比度。

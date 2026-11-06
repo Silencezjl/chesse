@@ -77,12 +77,12 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
       ${myVote === player.id ? 'ring-2 ring-red-400' : ''}
     `}>
       {isDisconnected && (
-        <div className="absolute top-1 right-1 text-xs bg-red-500/80 px-1.5 py-0.5 rounded text-white">
+        <div className="absolute top-1 right-1 cheese-role-badge cheese-role-thief">
           掉线
         </div>
       )}
       {player.ready && phase === 'waiting' && (
-        <div className="absolute top-1 right-1 text-xs bg-green-500/80 px-1.5 py-0.5 rounded text-white flex items-center gap-0.5">
+        <div className="absolute top-1 right-1 cheese-role-badge cheese-role-mouse gap-0.5">
           <Check size={10} /> 已准备
         </div>
       )}
@@ -148,7 +148,7 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
         if (blocked) return <span className="text-xs text-white/30 py-1">不可投票</span>;
         return myVote ? (
           myVote === player.id ? (
-            <span className="text-xs py-1 px-3 rounded-lg bg-red-500 text-white flex items-center gap-1">
+            <span className="cheese-role-badge cheese-role-thief gap-1">
               <Vote size={12} /> 已投票
             </span>
           ) : null
@@ -546,7 +546,7 @@ export default function Room({ ws }) {
 
       {/* Accomplice Full-Screen Overlay */}
       {showPrivate && screenShake && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
+        <div className="cheese-accomplice-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
           <div className="text-center p-8">
             <div className="text-8xl mb-4 animate-shake">🤝</div>
             <div className="text-3xl font-bold text-yellow-400 mb-2">你被选为共犯！</div>
