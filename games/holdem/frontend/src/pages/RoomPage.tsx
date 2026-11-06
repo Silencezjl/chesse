@@ -296,14 +296,7 @@ export default function RoomPage() {
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
         {isWaiting && firstHand ? (
           <>
-            <FirstHandPanel 
-              room={room}
-              playerId={playerId}
-              isSeated={isSeated}
-              canRebuy={canRebuy}
-              onReady={handleReady}
-              onRebuy={handleRebuy}
-            />
+            <FirstHandPanel room={room} />
             <SeatGrid room={room} playerId={playerId} onSit={handleSit} onStand={handleStand} />
             {isOwner && <button onClick={handleEndGame} className="w-full py-2 bg-red-900/60 border border-red-700 rounded-xl text-red-300">结束筹码局</button>}
           </>
@@ -345,6 +338,15 @@ export default function RoomPage() {
           </>
         )}
       </div>
+
+      {isWaiting && firstHand && isSeated && myPlayer && (
+        <div className="mobile-action flex-none z-10 bg-slate-900/95 border-t border-slate-800 px-4 py-3 flex gap-2">
+          {canRebuy && <button onClick={handleRebuy} disabled={!connected || actionPending} className="flex-1 rounded-xl bg-orange-600 text-white font-bold">补码 → {room.initial_chips}</button>}
+          <button onClick={handleReady} disabled={!connected || actionPending} className={`flex-1 py-3 rounded-xl font-bold text-lg ${myPlayer.ready ? 'bg-green-700' : 'bg-green-600'}`}>
+            {myPlayer.ready ? '✓ 已准备 (点击取消)' : '准备'}
+          </button>
+        </div>
+      )}
 
       {/* Bottom fixed area - my info + actions */}
       {isPlaying && myPlayer && !isShowdown && (

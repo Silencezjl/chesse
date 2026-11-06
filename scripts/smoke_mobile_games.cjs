@@ -2,6 +2,7 @@
 if (!['18088','18089'].includes(new URL(process.env.LOBBY_URL || 'http://localhost:18088').port)) throw Error('Use isolated development port 18088 or 18089');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');const assert=require('node:assert/strict');
 (async()=>{const base=process.env.LOBBY_URL || 'http://localhost:18088',errors=[];const b=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined,args:['--no-sandbox']});
+const assertBottom=async(frame,selector)=>{const info=await frame.locator(selector).evaluate(el=>{const bar=el.closest('.game-actions,.cheese-actions');const b=el.getBoundingClientRect(),a=bar.getBoundingClientRect();return {bottom:a.bottom,height:innerHeight,top:b.top,buttonBottom:b.bottom,width:b.width};});assert.ok(Math.abs(info.bottom-info.height)<2,JSON.stringify(info));assert.ok(info.top>=0&&info.buttonBottom<=info.height&&info.width>=44,JSON.stringify(info));};
 const cookies=new Map();const req=async(path,body)=>{const pid=body?.player_id || new URL(base+path).searchParams.get('player_id');const r=await fetch(base+'/lobby'+path,{method:body?'POST':'GET',headers:{'content-type':'application/json',...(pid?{cookie:cookies.get(pid)}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();assert.ok(r.ok,JSON.stringify(d));return d;};
 try{for(const game of ['cheese','bluff']){
  const count=game==='cheese'?5:3,ids=[],pages=[],contexts=[];
@@ -14,13 +15,16 @@ try{for(const game of ['cheese','bluff']){
  const frames=pages.map(p=>p.frameLocator('iframe'));
  await pages[0].locator('#fullscreen-game').click();await pages[0].waitForFunction(()=>document.fullscreenElement);
  if(game==='cheese'){
+  for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:640});await assertBottom(frames[0],'button[style*="touch-action"]');}
+  await pages[0].setViewportSize({width:360,height:800});
   for(let i=0;i<count;i++){
    await pages[i].bringToFront();const f=frames[i],role=f.getByRole('button',{name:'按住查看身份与私密信息'});await f.locator('button:not([disabled])').filter({hasText:'按住查看身份与私密信息'}).waitFor();
+   await assertBottom(f,'button[style*="touch-action"]');
    assert.equal(await f.getByText('你的骰子:',{exact:false}).count(),0);
    assert.equal(await f.getByRole('button',{name:'结束夜晚行动'}).isDisabled(),true);
    const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
-   const card=f.getByAltText('角色卡牌');await card.waitFor();await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
+   const card=f.getByAltText('角色卡牌');await card.waitFor();const visibleCard=await card.boundingBox();assert.ok(visibleCard.y>=0&&visibleCard.y+visibleCard.height<=800);await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await card.waitFor({state:'detached'});
    if(i===0){
     await role.focus();await pages[i].keyboard.down('Space');await card.waitFor();await pages[i].keyboard.up('Space');await card.waitFor({state:'detached'});
@@ -44,12 +48,15 @@ try{for(const game of ['cheese','bluff']){
   for(const f of frames)assert.equal(await f.locator('.role').count(),0);
   const judgeIndex=await (async()=>{for(let i=0;i<count;i++)if(await frames[i].locator('.draw').count())return i;})();
   await frames[judgeIndex].locator('.draw').first().click();
+  await frames[0].locator('#ready').waitFor();
+  for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:640});await assertBottom(frames[0],'#role-toggle');await assertBottom(frames[0],'#ready');}
+  await pages[0].setViewportSize({width:360,height:800});
   for(let i=0;i<count;i++){
-   const f=frames[i],role=f.locator('#role-toggle');await f.locator('#ready').waitFor();assert.equal(await f.locator('#ready').isDisabled(),true);
+   const f=frames[i],role=f.locator('#role-toggle');await f.locator('#ready').waitFor();await assertBottom(f,'#role-toggle');await assertBottom(f,'#ready');assert.equal(await f.locator('#ready').isDisabled(),true);
    const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
    await f.locator('.role').waitFor();
-   const card=f.locator('.role-card img');await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
+   const card=f.locator('.role-card img');const visibleCard=await card.boundingBox();assert.ok(visibleCard.y>=0&&visibleCard.y+visibleCard.height<=800);await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
    await pages[i].screenshot({path:`/tmp/chesse-bluff-role-${i}.png`});
    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    await f.locator('.role').waitFor({state:'detached'});assert.equal(await f.locator('#ready').isEnabled(),true);await touch.detach();

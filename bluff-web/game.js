@@ -7,6 +7,7 @@ const roleCards = {judge:'/bluff/assets/role-judge-v1.webp',honest:'/bluff/asset
 Object.values(roleCards).forEach(src=>{const image=new Image();image.src=src;});
 const phaseName = {choose:'选题',prepare:'确认准备',viewing:'限时看答案',discussion:'线下讨论与指认',reveal:'本轮揭晓',finished:'游戏结束'};
 let connected=false, sending=false, pendingTarget=null, privateAllowed=true, reconnectTimer=null;
+const footerObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(entries=>{document.documentElement.style.setProperty('--bluff-actions-height', `${entries[0].target.offsetHeight}px`);}) : {observe(){},disconnect(){}};
 let socket, state=null, error='', showRole=false, viewedRole=false, roleKey=null, holdingPointer=null, holdingKey=false, clockStart=0, clockValue=0;
 function rememberRole(){viewedRole=true;try{sessionStorage.setItem(roleKey,'1')}catch{}}
 function hideRole(){if(showRole || holdingPointer!==null || holdingKey){showRole=false;holdingPointer=null;holdingKey=false;render();}}
@@ -58,18 +59,22 @@ function render(){
  let content=`<header class="row between"><div><p class="muted">第 ${state.round}/${state.total_rounds} 轮 · 大聪明：${playerLabel(state.judge)}</p></div><div class="round-actions"><span class="pill">${esc(phaseName[state.phase]||state.phase)}</span>${owner&&state.phase!=='finished'?'<button class="end-game" id="terminate">结束本局</button>':''}</div></header>`;
  if(error)content+=`<div class="error">${esc(error)}</div>`;
  if(state.paused && state.phase!=='finished')content+='<div class="warn">有参与玩家离线，游戏已暂停。等待重连后继续；房主可结束本局。</div>';
- if(participant && state.phase!=='finished')content+=`<section class="card"><div class="row between"><span>你的身份</span><button class="secondary" id="role-toggle">按住查看身份</button></div><div id="role-content">${roleContent()}</div></section>`;
+ if(participant && state.phase!=='finished')content+=`<div id="role-content">${roleContent()}</div>`;
  if(!participant)content+='<div class="card muted">你是观众。揭晓前不会显示身份和答案。</div>';
  content+=questionCard();
  if(state.phase==='choose')content+=`<section class="card"><h2>选择题目难度</h2>${judge?`<p class="muted">1 分：一个提示；2 分：三个方向中一个正确；3 分：没有提示。</p><div class="row">${[1,2,3].map(n=>`<button class="draw" data-value="${n}" ${state.paused||!state.available[n]?'disabled':''}>${n} 分 · 剩 ${state.available[n]} 题</button>`).join('')}</div>`:`<p class="muted">等待大聪明选题。</p>`}${Object.values(state.available).every(v=>v===0)?'<p class="warn">题库已用完，房主可以结束本局。</p>':''}</section>`;
- if(state.phase==='prepare')content+=`<section class="card"><h2>准备查看答案</h2><p class="muted">已准备 ${state.ready_count}/${state.players.length}。所有参与者准备后开始 9 秒查看。</p><div class="row">${participant?`<button id="ready" ${state.paused||state.i_ready||!viewedRole?'disabled':''}>${state.i_ready?'已准备':'确认准备'}</button>`:''}${judge?`<button class="secondary" id="skip" ${state.paused?'disabled':''}>换一道题</button>`:''}</div>${participant&&!viewedRole&&!state.i_ready?'<p class="muted">请先查看身份牌。</p>':''}</section>`;
+ if(state.phase==='prepare')content+=`<section class="card"><h2>准备查看答案</h2><p class="muted">已准备 ${state.ready_count}/${state.players.length}。所有参与者准备后开始 9 秒查看。</p>${judge?`<button class="secondary" id="skip" ${state.paused?'disabled':''}>换一道题</button>`:''}${participant&&!viewedRole&&!state.i_ready?'<p class="muted">请先查看身份牌。</p>':''}</section>`;
  if(state.phase==='viewing')content+=`<section class="card"><h2>限时查看答案</h2><p class="muted">其余玩家请勿偷看别人的屏幕。</p><div class="big" id="countdown">${Math.ceil(remaining())} 秒</div>${state.answer&&privateAllowed&&!document.hidden&&remaining()>0?`<div class="answer" id="answer"><strong>仅你可见的答案</strong><p>${esc(state.answer)}</p></div>`:'<p class="muted">请等待查看时间结束。</p>'}</section>`;
  if(state.phase==='discussion')content+=`<section class="card"><h2>放下手机，面对面讨论</h2><p class="muted">请面对面发言和提问。大聪明必须先质疑一人，再指认老实人。</p>${judge?(!state.challenge_made?`<strong>请选择质疑对象</strong>${buttonsForTargets('challenge')}`:`<p>已质疑 ${playerLabel(state.my_challenge)}</p><strong>请选择你认为的老实人</strong>${buttonsForTargets('guess')}`):`<p class="muted">${state.challenge_made?'大聪明正在指认老实人。':'等待大聪明选择质疑对象。'}</p>`}</section>`;
- if(state.phase==='reveal')content+=`<section class="card"><h2>本轮揭晓</h2>${history()}${playerId===state.judge||owner?`<button id="next" ${state.paused?'disabled':''}>${state.round===state.total_rounds?'查看最终结果':'下一轮'}</button>`:'<p class="muted">等待大聪明或房主进入下一轮。</p>'}</section>`;
+ if(state.phase==='reveal')content+=`<section class="card"><h2>本轮揭晓</h2>${history()}${playerId===state.judge||owner?'':'<p class="muted">等待大聪明或房主进入下一轮。</p>'}</section>`;
  if(state.phase==='finished')content+=`<section class="card"><h2>${state.terminated?'本局已提前结束':'🏆 最终结果'}</h2><p>最高分：${state.winners.map(p=>PlayerNames.html(playerName(p))).join('、')}</p>${scoreboard()}<p class="muted">请返回公共房间切换游戏。</p></section>${state.history?.length?`<section class="card"><h2>已完成回合</h2>${history()}</section>`:''}`;
  if(state.phase!=='finished')content+=`<details class="card" id="scores"><summary>查看当前分数</summary>${scoreboard()}</details>`;
+ if(state.phase!=='finished' && (participant || (state.phase==='reveal' && owner)))content+=`<div class="game-actions">${participant?'<button class="secondary" id="role-toggle">按住查看身份</button>':''}${state.phase==='prepare'&&participant?`<button id="ready" ${state.paused||state.i_ready||!viewedRole?'disabled':''}>${state.i_ready?'已准备':'确认准备'}</button>`:''}${state.phase==='reveal'&&(judge||owner)?`<button id="next" ${state.paused?'disabled':''}>${state.round===state.total_rounds?'查看最终结果':'下一轮'}</button>`:''}</div>`;
  if(pendingTarget)content+=`<div class="modal-backdrop"><section class="confirm-card" role="dialog" aria-modal="true" aria-label="确认操作"><h2>${pendingTarget.action==='terminate'?'提前结束本局？':pendingTarget.action==='challenge'?'确认质疑这位玩家？':'确认指认这位玩家为老实人？'}</h2><p>${pendingTarget.action==='terminate'?'未完成回合不会计分，已完成结果保留。':PlayerNames.html(playerName(pendingTarget.id))}</p><button id="confirm-target">确认提交</button><button class="secondary" id="cancel-target">重新选择</button></section></div>`;
+ footerObserver.disconnect();
  root.innerHTML=content;
+ const footer=root.querySelector('.game-actions');
+ if(footer){footerObserver.observe(footer);document.documentElement.style.setProperty('--bluff-actions-height', `${footer.offsetHeight}px`);}else document.documentElement.style.removeProperty('--bluff-actions-height');
  if(pendingTarget)[...root.children].forEach(el=>{if(!el.classList.contains('modal-backdrop'))el.inert=true;});
  openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});
  if(focused)document.getElementById(focused)?.focus({preventScroll:true});

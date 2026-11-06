@@ -233,11 +233,11 @@ async function roomAction(path,body={}) {
   const next=await api(`/rooms/${room.id}/${path}`,{player_id:playerId,...body});if(next?.id)updateRoom(next);
 }
 function homeView() {
-  return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div><button id="create-room" ${busy?'disabled':''}>＋ 创建房间</button></section>
+  return `<section class="home-intro"><div><h1>朋友到齐，就开玩。</h1><p class="muted">找到朋友的名字，直接加入他们。</p></div></section>
   <div class="section-head"><h2>房间列表 <small>${rooms.length} 间</small></h2><button class="secondary" id="refresh-list">刷新</button></div>
   ${listError?`<div class="error" role="alert">${esc(listError)} · 点击刷新重试</div>`:''}
   <div class="room-cards">${rooms.length?rooms.map(r=>`<article class="room-card"><div class="room-face">${GameAvatars.html(r.owner_avatar)}</div><div class="room-summary"><h3>${PlayerNames.html(roomTitle(r))} ${r.has_password?'<span aria-label="有密码">🔒</span>':''}</h3><p>${esc(info(r.game_id)?.title || '还没选游戏')} · ${r.count}/${r.capacity || 12} 人</p><span class="badge">${!r.joinable?'房间已满':r.stage==='playing'?'游戏中 · 可候场':stageName(r.stage)}</span></div><button data-join="${esc(r.id)}" ${busy||!r.joinable?'disabled':''}>${!r.joinable?'已满':r.stage==='playing'?'候场':'加入'}</button></article>`).join(''):`<div class="empty-state" role="status"><p class="muted">暂无房间，创建后会显示在这里。</p></div>`}</div>
-  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}" ${busy?'disabled':''}>${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div>`;
+  <div class="section-head"><h2>今晚玩什么？</h2><span>免注册 · 手机就能玩</span></div><div class="game-shortcuts">${games.map(g=>`<button class="game-shortcut" data-create="${g.id}" ${busy?'disabled':''}>${gameIcon(g)}<strong>${esc(g.title)}</strong><small>${g.minimum}–${g.maximum} 人 · ${esc(g.tag)}</small></button>`).join('')}</div><div class="action-bar home-action"><button id="create-room" ${busy?'disabled':''}>＋ 创建房间</button></div>`;
 }
 function settingsView() {
   const g=info(room.game_id);if(!g)return '';
@@ -333,7 +333,7 @@ function render() {
   document.body.classList.toggle('game-mode',Boolean(inGame));
   root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions" role="group" aria-label="快捷操作">${latencyView()}<span class="top-divider" aria-hidden="true"></span>${fullscreenButton()}<span class="top-divider" aria-hidden="true"></span><button class="profile-chip" id="my-profile" aria-label="${esc(name?'编辑个人资料，昵称：'+name:'设置个人资料')}" title="我的资料">${GameAvatars.html(avatar)}</button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><div class="game-toolbar-actions">${fullscreenButton('game')}<button class="secondary" id="show-room">${room.stage==='finished'?'返回房间':'查看房间'}</button></div></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   syncScrollLayout();bindEvents();mountGame();
-  if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
+  if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume):not(#create-room), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
   const nextDialog=root.querySelector('[role=dialog]');if(nextDialog)nextDialog.scrollTop=scroll;
   const nextAvatars=root.querySelector('.avatars');if(nextAvatars)nextAvatars.scrollTop=avatarScroll;

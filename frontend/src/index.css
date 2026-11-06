@@ -280,3 +280,7 @@ fieldset:disabled button { opacity:.45; }
 summary { min-height:44px; cursor:pointer; }
 main { padding-bottom:calc(16px + env(safe-area-inset-bottom))!important; }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.cheese-actions{position:fixed;z-index:20;left:0;right:0;bottom:0;margin:0!important;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#211b34f5;border-top:1px solid #ffffff24}.cheese-actions>button{flex:1;max-width:440px;padding:10px}.cheese-action-buttons{padding:0;border:0;flex:1;min-width:0;margin:0}.cheese-action-buttons:empty{display:none}.cheese-action-buttons button{flex:1;min-width:0;padding:10px}.cheese-action-buttons span{font-size:12px}.private-card{position:fixed;z-index:21;top:50%;left:50%;transform:translate(-50%,-50%);width:min(90%,420px);max-height:60dvh;overflow:auto;background:#302741!important;box-shadow:0 8px 40px #0009}.theme-day .private-card{background:#fff!important}.cheese-actions + *{margin-top:0}
+
+.theme-day .cheese-actions,.theme-result .cheese-actions{background:#fffffff5;border-color:#e4e0f1}

@@ -17,7 +17,8 @@ for(const width of [320,360,430]){await home.setViewportSize({width,height:800})
 await home.locator('#fullscreen-header').click();await home.waitForFunction(()=>document.fullscreenElement);
 assert.ok(await home.evaluate(()=>document.scrollingElement.scrollHeight<=innerHeight+1));
 await home.setViewportSize({width:360,height:640});await home.evaluate(()=>scrollTo(0,1e6));
-const trailing=await home.locator('.game-shortcuts').evaluate(el=>innerHeight-el.getBoundingClientRect().bottom);assert.ok(trailing>=20&&trailing<=28);
+const trailing=await home.locator('.game-shortcuts').evaluate(el=>document.querySelector('.home-action').getBoundingClientRect().top-el.getBoundingClientRect().bottom);assert.ok(trailing>=12&&trailing<=24,`Home footer overlaps content or leaves excess space: ${trailing}`);
+const homeButton=await home.locator('#create-room').boundingBox();assert.ok(homeButton.y+homeButton.height<=640&&homeButton.y>500);
 await home.close();
 rid=(await req('/rooms',{player_id:ids[0],name:'滚动玩家0',avatar:'animal-01',game_id:'holdem'})).id;
 for(let i=1;i<ids.length;i++)await req(`/rooms/${rid}/join`,{player_id:ids[i],name:'滚动玩家'+i,avatar:'animal-02'});

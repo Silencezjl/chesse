@@ -97,3 +97,5 @@ html.game-viewport{height:100%}
 .top-actions .profile-chip .user-avatar{width:34px;height:34px;padding:3px;border:1px solid #e0d7f4;background:#f0ebff;box-shadow:0 2px 5px #6550870c}
 .game-toolbar .latency-signal{width:11px;height:11px}
 @media(hover:hover){.top-actions .fullscreen-toggle:hover,.top-actions .profile-chip:hover{background:#f3effb}}
+
+.home-action{text-align:center}.home-action button{width:100%;max-width:448px}

@@ -188,6 +188,18 @@ export default function Room({ ws }) {
     try { return !!viewedKey && sessionStorage.getItem(viewedKey) === '1'; }
     catch { return false; }
   });
+  const actionBarRef = useRef(null);
+  const [actionHeight, setActionHeight] = useState(0);
+  useLayoutEffect(() => {
+    const bar = actionBarRef.current;
+    if (!bar) return;
+    const update = () => setActionHeight(bar.offsetHeight);
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(bar);
+    window.addEventListener('resize', update);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update); };
+  }, []);
   const heldPointer = useRef(null);
   const heldKey = useRef(false);
   const [confirmation, setConfirmation] = useState(null);
@@ -301,7 +313,7 @@ export default function Room({ ws }) {
 
 
   return (
-    <div className="w-full max-w-4xl mt-4 animate-fade-in space-y-4">
+    <div className="w-full max-w-4xl mt-4 space-y-4" style={{paddingBottom: actionHeight}}>
       {/* Room Header */}
       {!embedded && <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -361,29 +373,11 @@ export default function Room({ ws }) {
       )}
 
       <div className="glass-card p-4 space-y-3"><h2 className="font-bold text-lg">{phase === 'night' ? '🌙 完成你的夜晚行动' : phase === 'day' ? '☀️ 现在可以放下手机，面对面讨论' : phase === 'voting' ? '🗳️ 选择你要投票的玩家' : '🏆 本局结果'}</h2>
-        {!isSpectator && ['night','day','voting'].includes(phase) && <button
-          className="btn-secondary"
-          disabled={!gameInfo}
-          style={{touchAction:'none', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none'}}
-          onContextMenu={e => e.preventDefault()}
-          onPointerDown={e => {
-            if (e.button !== 0 || heldPointer.current !== null) return;
-            e.preventDefault();
-            heldPointer.current = e.pointerId;
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
-            revealPrivate();
-          }}
-          onKeyDown={e => {
-            if (e.key === ' ' || e.key === 'Enter') {
-              e.preventDefault();
-              if (!e.repeat) { heldKey.current = true; revealPrivate(); }
-            }
-          }}
-        >按住查看身份与私密信息</button>}
+
       </div>
       {/* Game Info Banner */}
       {showPrivate && !isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
-        <div className={`glass-card p-4 ${
+        <div className={`glass-card private-card p-4 ${
           isMeThief ? 'border-red-500/30' : isMeAccomplice ? 'border-yellow-500/30' : isMeDodobird ? 'border-teal-500/30' : 'border-blue-500/30'
         }`}>
           <div className="flex items-start gap-3 md:gap-4">
@@ -636,7 +630,27 @@ export default function Room({ ws }) {
 
       {confirmation && <div className="fixed inset-0 z-50 bg-black/80 flex items-end p-3"><section role="dialog" aria-modal="true" aria-label="确认目标" className="glass-card w-full p-5 space-y-4"><h2 className="text-lg font-bold">{confirmation.label}？</h2><p><Avatar value={players[confirmation.target]?.avatar} /> <NameText value={players[confirmation.target]?.name} /></p><div className="flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirmation(null)}>重新选择</button><button className="btn-primary flex-1" disabled={!ws.connected || ws.actionPending} onClick={() => { send(confirmation.type, {target_id:confirmation.target}); setConfirmation(null); }}>确认提交</button></div></section></div>}
       {/* Action Buttons */}
-      <fieldset disabled={!ws.connected || ws.actionPending} className="glass-card p-4 flex flex-wrap items-center justify-center gap-3">
+      <div className="cheese-actions" ref={actionBarRef}>
+        {!isSpectator && ['night','day','voting'].includes(phase) && <button
+          className="btn-secondary"
+          disabled={!gameInfo}
+          style={{touchAction:'none', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none'}}
+          onContextMenu={e => e.preventDefault()}
+          onPointerDown={e => {
+            if (e.button !== 0 || heldPointer.current !== null) return;
+            e.preventDefault();
+            heldPointer.current = e.pointerId;
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+            revealPrivate();
+          }}
+          onKeyDown={e => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              e.preventDefault();
+              if (!e.repeat) { heldKey.current = true; revealPrivate(); }
+            }
+          }}
+        >按住查看身份与私密信息</button>}
+      <fieldset disabled={!ws.connected || ws.actionPending} className="cheese-action-buttons flex flex-wrap items-center justify-center gap-3">
         {isSpectator && phase !== 'waiting' && (
           <span className="text-sm text-white/40">👀 观战中，等待本局结束...</span>
         )}
@@ -716,6 +730,7 @@ export default function Room({ ws }) {
           <span className="text-sm text-white/40">{embedded ? '本局结束，请返回公共房间选择下一局。' : '等待房主开启下一局...'}</span>
         )}
       </fieldset>
+      </div>
     </div>
   );
 }
