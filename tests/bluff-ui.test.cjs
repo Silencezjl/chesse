@@ -2,7 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {JSDOM} = require('jsdom');
 const fs = require('node:fs');
-const source = fs.readFileSync('bluff-web/game.js', 'utf8');
+const source = fs.readFileSync('web/games/bluff.js', 'utf8').replace('export function mount','function mount');
 
 function openGame(storage = {}) {
   const dom = new JSDOM('<main id="app"></main>', {url:'http://example.test/bluff/?room=123456', runScripts:'outside-only'});
@@ -19,7 +19,7 @@ function openGame(storage = {}) {
     constructor(){socket=this;this.readyState=1;}
     send(data){messages.push(JSON.parse(data));}
   };
-  w.eval(source);
+  w.eval(source+`;mount({element:document.querySelector('#app'),root:document,roomId:'123456',playerId:'p1',signal:new AbortController().signal,onConnection(){}});`);
   return {w, dom, messages, send(data){socket.onmessage({data:JSON.stringify({type:'state', data})});}};
 }
 

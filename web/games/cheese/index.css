@@ -1,0 +1,126 @@
+@config "./tailwind.config.cjs";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.game-page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100%;
+  color: #f8fafc;
+
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(251, 191, 36, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.6); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-5deg); }
+  75% { transform: rotate(5deg); }
+}
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-8px, -6px); }
+  20% { transform: translate(8px, 4px); }
+  30% { transform: translate(-6px, 8px); }
+  40% { transform: translate(6px, -4px); }
+  50% { transform: translate(-4px, 6px); }
+  60% { transform: translate(4px, -8px); }
+  70% { transform: translate(-8px, 4px); }
+  80% { transform: translate(6px, 6px); }
+  90% { transform: translate(-4px, -6px); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.animate-screen-shake {
+  animation: screen-shake 0.8s ease-in-out 0s 2;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-xl
+         hover:from-blue-500 hover:to-blue-600 transition-all duration-200
+         active:scale-95 shadow-lg shadow-blue-500/25;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center px-6 py-3 bg-white/10 text-white font-medium rounded-xl border border-white/20
+         hover:bg-white/20 transition-all duration-200 active:scale-95;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center px-6 py-3 bg-red-500/80 text-white font-bold rounded-xl
+         hover:bg-red-500 transition-all duration-200 active:scale-95;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white
+         placeholder-white/40 focus:outline-none focus:border-cheese-400 focus:ring-1
+         focus:ring-cheese-400 transition-all;
+}
+
+button { min-height:44px; }
+input,select { font-size:16px; }
+.game-page { overflow-wrap:anywhere; }
+fieldset { min-width:0; }
+fieldset:disabled button { opacity:.45; }
+summary { min-height:44px; cursor:pointer; }
+main { padding-bottom:calc(16px + env(safe-area-inset-bottom))!important; }
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.cheese-actions{position:fixed;z-index:20;left:0;right:0;bottom:0;margin:0!important;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#211b34f5;border-top:1px solid #ffffff24}.cheese-actions>button{flex:1;max-width:440px;padding:10px}.cheese-action-buttons{padding:0;border:0;flex:1;min-width:0;margin:0}.cheese-action-buttons:empty{display:none}.cheese-action-buttons button{flex:1;min-width:0;padding:10px}.cheese-action-buttons span{font-size:12px}.private-card{position:fixed;z-index:21;top:50%;left:50%;transform:translate(-50%,-50%);width:min(90%,420px);max-height:60dvh;overflow:auto;background:#302741!important;box-shadow:0 8px 40px #0009}.cheese-actions + *{margin-top:0}
+
+
+
+.game-page{min-height:100%;color:var(--mobile-ink);background:var(--mobile-background)}
+
+.game-page{background:var(--mobile-background);color:var(--mobile-ink)}.glass-card,.private-card{background:var(--theme-panel)!important;border-color:var(--theme-border)}.cheese-actions{background:var(--theme-panel);border-color:var(--theme-border)}.text-white\/40,.text-white\/50,.text-white\/60,.text-white\/70,.text-white\/80,.text-white\/85{color:var(--mobile-muted)}.btn-secondary{background:var(--theme-soft);color:var(--mobile-ink);border-color:var(--theme-border)}
+[class*="text-white/"]{color:var(--mobile-muted)}.text-white{color:var(--mobile-ink)}[class*="border-white/"]{border-color:var(--theme-border)}button.btn-primary,button.btn-danger{color:white}
+
+.text-slate-900,.text-slate-800,.text-slate-700,.text-slate-600{color:var(--mobile-ink)}
+
+.text-yellow-300,.text-yellow-400,.text-cheese-300,.text-cheese-400{color:var(--theme-money)}

@@ -1,5 +1,11 @@
+import './avatars';
+import './player-names';
+import './mobile-interactions';
+import {createGameHost} from '../web/platform/games';
+import {themeButton,toggleTheme} from '../web/platform/theme';
 const root = document.querySelector('#app');
 const gameShell = document.querySelector('#game-shell');
+const gameHost = createGameHost(gameShell);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let playerId = '';
 const avatars = GameAvatars.ids;
@@ -39,6 +45,7 @@ function fullscreenButton(context='header'){
 }
 function paintFullscreen(){
   const active=Boolean(fullscreenElement()),label=active?'退出全屏':canFullscreen()?'进入全屏':'全屏说明';
+  root.querySelectorAll('[data-theme-toggle]').forEach(button=>button.onclick=()=>{toggleTheme();render()});
   root.querySelectorAll('[data-fullscreen]').forEach(button=>{button.setAttribute('aria-label',label);button.title=label;button.setAttribute('aria-pressed',String(active));button.disabled=fullscreenPending || Boolean(busy&&(sheet||pendingKick));button.innerHTML=fullscreenIcon(active);});
 }
 async function toggleFullscreen(){
@@ -134,7 +141,7 @@ function closeSocket() {
   connected=false;
 }
 function clearRoom() {
-  closeSocket();sheet=null;pendingKick=null;room=null;mountedSession='';gameConnected=false;gameShell.replaceChildren();gameShell.hidden=true;
+  closeSocket();sheet=null;pendingKick=null;room=null;mountedSession='';gameConnected=false;gameHost.clear();gameShell.hidden=true;
   localStorage.removeItem('lobby_room_id');history.replaceState(null,'','/');render();refreshList();probeLatency();
 }
 function connect() {
@@ -310,19 +317,17 @@ function sheetView() {
 }
 function mountGame() {
   const active=room&&room.session_id&&inSession()&&['playing','finished'].includes(room.stage);
-  if(!active){gameShell.replaceChildren();mountedSession='';gameShell.hidden=true;return;}
+  if(!active){gameHost.clear();mountedSession='';gameShell.hidden=true;return;}
   if(mountedSession!==room.session_id){
-    localStorage.setItem('cheese_player_id',playerId);localStorage.setItem('cheese_room_id',room.id);
-    localStorage.setItem('holdem_device_id',playerId);localStorage.setItem('holdem_player_name',name);localStorage.setItem('holdem_player_emoji',avatar);localStorage.setItem('holdem_room_id',room.id);
-    const entry=info(room.game_id)?.entry;
-    const src=room.game_id==='holdem'?`${entry}room/${room.id}`:room.game_id==='bluff'?`${entry}?room=${room.id}`:room.game_id==='cheese'?`${entry}?session=${encodeURIComponent(room.session_id)}`:entry;if(!src)return;
-    const frame=document.createElement('iframe');frame.title=info(room.game_id).title;frame.className='game-frame';frame.src=src;
-    gameConnected=false;gameShell.replaceChildren(frame);mountedSession=room.session_id;
+    mountedSession=room.session_id;gameConnected=false;
+    gameHost.mount(room.game_id,{roomId:room.id,playerId,sessionId:room.session_id,name,avatar,
+      onConnection(value){gameConnected=value;render();},
+      onReturn(){conceal();showGame=false;render();refreshRoom();}});
   }
   gameShell.hidden=!showGame;
   gameShell.inert=Boolean(sheet||pendingKick||!showGame);
 }
-function conceal(){gameShell.querySelector('iframe')?.contentWindow?.postMessage({type:'conceal_private',session_id:mountedSession},location.origin);}
+function conceal(){gameHost.conceal();}
 function render() {
   if(!booting&&!name&&!room&&sheet!=='onboarding'){sheet='onboarding';draftName='';draftAvatar=avatar;}
   const focus=document.activeElement,saved=focus?.id?{id:focus.id,start:focus.selectionStart,end:focus.selectionEnd}:null;
@@ -331,7 +336,7 @@ function render() {
   const pageScroll={x:window.scrollX,y:window.scrollY};
   const inGame=room&&showGame&&inSession()&&room.session_id&&['playing','finished'].includes(room.stage);
   document.body.classList.toggle('game-mode',Boolean(inGame));
-  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions" role="group" aria-label="快捷操作">${latencyView()}<span class="top-divider" aria-hidden="true"></span>${fullscreenButton()}<span class="top-divider" aria-hidden="true"></span><button class="profile-chip" id="my-profile" aria-label="${esc(name?'编辑个人资料，昵称：'+name:'设置个人资料')}" title="我的资料">${GameAvatars.html(avatar)}</button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><div class="game-toolbar-actions">${fullscreenButton('game')}<button class="secondary" id="show-room">${room.stage==='finished'?'返回房间':'查看房间'}</button></div></div>`:room?roomView():homeView()}</div>${sheetView()}`;
+  root.innerHTML=`<div class="shell" ${sheet||pendingKick?'inert':''}><header class="top"><button class="brand" id="brand" aria-label="游戏大厅"><img class="brand-mark" src="/assets/party-logo-indigo-v1.webp" width="48" height="48" alt="" decoding="async"></button><div class="top-actions" role="group" aria-label="快捷操作">${themeButton()}${latencyView()}<span class="top-divider" aria-hidden="true"></span>${fullscreenButton()}<span class="top-divider" aria-hidden="true"></span><button class="profile-chip" id="my-profile" aria-label="${esc(name?'编辑个人资料，昵称：'+name:'设置个人资料')}" title="我的资料">${GameAvatars.html(avatar)}</button></div></header>${error&&!sheet&&!pendingKick?`<div class="error" role="alert">${esc(error)}</div>`:''}${booting?'<p class="muted">正在为你摆好桌子…</p>':inGame?`<div class="game-toolbar"><div class="game-toolbar-title">${gameIcon(info(room.game_id))}<div><strong>${esc(info(room.game_id)?.title)}</strong><small>${!connected?'房间连接恢复中…':!gameConnected?'游戏连接恢复中…':stageName(room.stage)}</small>${latencyView()}</div></div><div class="game-toolbar-actions">${themeButton()}${fullscreenButton('game')}<button class="secondary" id="show-room">${room.stage==='finished'?'返回房间':'查看房间'}</button></div></div>`:room?roomView():homeView()}</div>${sheetView()}`;
   syncScrollLayout();bindEvents();mountGame();
   if(!connected || busy)root.querySelectorAll('.action-bar button:not([data-resume]):not(#resume):not(#create-room), [data-seat], [data-game], [data-transfer], [data-kick]').forEach(b=>b.disabled=true);
   if(busy)root.querySelectorAll('[role=dialog] button').forEach(b=>b.disabled=true);
@@ -392,11 +397,6 @@ document.addEventListener('visibilitychange',()=>{
   setLatency(null,'measuring');
   if(room&&!superseded){if(!connected)connect();else refreshRoom();}else if(!room)refreshList();
   probeLatency();
-});
-window.addEventListener('message',e=>{
-  if(e.origin!==location.origin||e.source!==gameShell.querySelector('iframe')?.contentWindow)return;
-  if(e.data?.type==='return_to_lobby'){conceal();showGame=false;render();refreshRoom();}
-  if(e.data?.type==='game_connection'){gameConnected=Boolean(e.data.connected);render();}
 });
 (async()=>{
   try{const identity=await api('/identity',{});playerId=identity.player_id;localStorage.setItem('lobby_player_id',playerId);games=await api('/games');const saved=(await api(`/players/${playerId}/room`)).room_id;if(saved)await loadRoom(saved);else await refreshList();}

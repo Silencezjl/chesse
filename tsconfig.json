@@ -1,0 +1,1 @@
+{"compilerOptions": {"target": "ES2022", "lib": ["DOM", "DOM.Iterable", "ES2022"], "skipLibCheck": true, "esModuleInterop": true, "strict": true, "module": "ESNext", "moduleResolution": "bundler", "noEmit": true, "jsx": "react-jsx", "types": ["vite/client", "node"], "allowJs": true, "checkJs": false}, "include": ["web/**/*.ts", "web/**/*.tsx"], "exclude": ["**/*.test.tsx"]}

@@ -3,15 +3,15 @@ from copy import deepcopy
 from .rules import RULES
 
 CATALOG = {
-    'cheese': dict(title='奶酪大盗', icon='/assets/game-cheese-indigo-v1.webp', minimum=5, maximum=8, entry='/cheese/',
+    'cheese': dict(title='奶酪大盗', icon='/assets/game-cheese-indigo-v1.webp', minimum=5, maximum=8,
                    description='一枚骰子，一个秘密。找出藏在朋友中的奶酪大盗。', tag='社交推理',
                    settings=[dict(key='outsider_dodobird', label='加入呆呆鸟', type='boolean', default=False),
                              dict(key='thief_see_all_dice', label='大盗可见所有点数', type='boolean', default=True),
                              dict(key='max_dice', label='骰子面数', type='number', default=6, min=6, max=10)]),
-    'bluff': dict(title='瞎掰王', icon='/assets/game-bluff-indigo-v1.webp', minimum=3, maximum=9, entry='/bluff/',
+    'bluff': dict(title='瞎掰王', icon='/assets/game-bluff-indigo-v1.webp', minimum=3, maximum=9,
                   description='一本正经地胡说八道，看谁能找出唯一的老实人。', tag='即兴表演',
                   settings=[dict(key='circles', label='游戏圈数', type='number', default=1, min=1, max=3)]),
-    'holdem': dict(title='Holdem 筹码', icon='/assets/game-holdem-indigo-v1.webp', minimum=2, maximum=12, entry='/holdem/',
+    'holdem': dict(title='Holdem 筹码', icon='/assets/game-holdem-indigo-v1.webp', minimum=2, maximum=12,
                    description='实体牌桌的随身筹码管家，和朋友轻松记账。', tag='线下牌桌',
                    settings=[dict(key='sb_amount', label='小盲注', type='number', default=10, min=1, max=1000000),
                              dict(key='initial_chips', label='初始筹码', type='number', default=1000, min=1, max=1000000000),

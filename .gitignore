@@ -1,9 +1,7 @@
 # Dependencies
 node_modules/
-frontend/node_modules/
 
 # Build output
-frontend/dist/
 *.tar
 *.tar.gz
 # Python
@@ -40,4 +38,4 @@ Thumbs.db
 npm-debug.log*
 
 # Vite
-frontend/.vite/
+.vite/

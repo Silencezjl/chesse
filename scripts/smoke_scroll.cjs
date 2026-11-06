@@ -37,14 +37,14 @@ await p.locator('#close-sheet').click();assert.equal(await p.evaluate(()=>scroll
 await p.locator('#fullscreen-header').click();await p.waitForFunction(()=>!document.fullscreenElement);
 let config=await req(`/rooms/${rid}/game`,{player_id:ids[0],game_id:'holdem',options:{initial_chips:1000,hand_interval:60}});
 for(const pid of ids)if(!config.seats.includes(pid))config=await req(`/rooms/${rid}/seat`,{player_id:ids[0],target_id:pid,seated:true});
-for(const pid of ids)await req(`/rooms/${rid}/ready`,{player_id:pid,ready:true,revision:config.revision});await p.locator('iframe').waitFor();
+for(const pid of ids)await req(`/rooms/${rid}/ready`,{player_id:pid,ready:true,revision:config.revision});await p.locator('#game-shell .game-page').waitFor();
 assert.ok(await p.evaluate(()=>document.scrollingElement.scrollHeight<=innerHeight+1));
 for(let i=0;i<ids.length;i++)gameFeeds.set(ids[i],await feed(`/holdem-ws/${rid}/${ids[i]}`,i===0));await finish();for(const ws of feeds)ws.close();
-await p.reload();await p.locator('#room-menu').waitFor();await p.locator('#room-menu').click();await p.locator('[data-resume]').click();const frame=p.frameLocator('iframe');await frame.getByRole('button',{name:'返回首页',exact:true}).waitFor({state:'attached'});await p.locator('#fullscreen-game').click();await p.waitForFunction(()=>document.fullscreenElement);
+await p.reload();await p.locator('#room-menu').waitFor();await p.locator('#room-menu').click();await p.locator('[data-resume]').click();const frame=p.locator('#game-shell');await frame.getByRole('button',{name:'返回首页',exact:true}).waitFor({state:'attached'});await p.locator('#fullscreen-game').click();await p.waitForFunction(()=>document.fullscreenElement);
 const stats=await frame.getByRole('button',{name:'返回首页',exact:true}).evaluate(button=>({h:innerHeight,doc:document.scrollingElement.scrollHeight,box:button.parentElement.clientHeight,content:button.parentElement.scrollHeight,overflow:getComputedStyle(button.parentElement).overflowY,buttonBottom:button.getBoundingClientRect().bottom}));
 assert.ok(stats.content>stats.box);assert.ok(stats.doc<=stats.h+1);
-const frameBox=await p.locator('iframe').boundingBox();await p.mouse.move(frameBox.x+frameBox.width/2,frameBox.y+frameBox.height/2);await p.mouse.wheel(0,10000);
-await p.waitForFunction(()=>{const w=document.querySelector('iframe').contentWindow,button=[...w.document.querySelectorAll('button')].find(b=>b.textContent.trim()==='返回首页');return button?.getBoundingClientRect().bottom<=w.innerHeight;});
+const frameBox=await p.locator('#game-shell .game-page').boundingBox();await p.mouse.move(frameBox.x+frameBox.width/2,frameBox.y+frameBox.height/2);await p.mouse.wheel(0,10000);
+await p.waitForFunction(()=>{const w=window,button=[...document.querySelector('#game-shell').shadowRoot.querySelectorAll('button')].find(b=>b.textContent.trim()==='返回首页');return button?.getBoundingClientRect().bottom<=w.innerHeight;});
 assert.equal(await p.evaluate(()=>scrollY),0);
 console.log('PASS: short full-screen lobby has no blank scroll; rules clear the footer; modal background stays fixed while avatars scroll; 12-player result list scrolls internally and its return button is reachable');
 }catch(error){console.error("Test failed:",error);throw error;}finally{try{if(rid){if(!finished&&last?.room){try{await finish();}catch(e){console.error('Cleanup failed:',e.message);}}if(finished)for(const pid of [...ids].reverse())await req(`/rooms/${rid}/leave`,{player_id:pid});}}finally{for(const ws of feeds)ws.close();await b.close();}}})().catch(e=>{console.error(e);process.exit(1)});

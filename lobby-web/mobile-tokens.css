@@ -22,3 +22,7 @@ html:has([role=dialog][aria-modal=true]){overflow:hidden}
   input,textarea,[contenteditable]:not([contenteditable="false"]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   img{-webkit-user-drag:none}
 }
+:root{color-scheme:light;--theme-panel:#fff;--theme-soft:#eeeafe;--theme-raised:#f3f1fa;--theme-border:#e4e0f1;--theme-primary:#5945ce;--theme-on-primary:#fff;--theme-warning-bg:#fff0bd;--theme-warning-ink:#865800;--theme-slate-900:#f6f5fc;--theme-slate-800:#fff;--theme-slate-700:#eeeafe;--theme-slate-600:#c9c1e8;--theme-text-200:#28243d;--theme-text-300:#554d69;--theme-text-400:#716b87;--theme-text-500:#81788f}
+:root[data-theme=dark]{color-scheme:dark;--mobile-ink:#e6e1f1;--mobile-muted:#b5abc8;--mobile-background:#1b1729;--mobile-surface:#2c253e;--mobile-line:#493e60;--mobile-accent:#baa7fa;--mobile-accent-soft:#35266d;--mobile-accent-strong:#d7ccff;--theme-panel:#2c253e;--theme-soft:#352e48;--theme-raised:#322a44;--theme-border:#493e60;--theme-primary:#8064e2;--theme-on-primary:#fff;--theme-warning-bg:#514020;--theme-warning-ink:#ffdb78;--theme-slate-900:#1b1729;--theme-slate-800:#2c253e;--theme-slate-700:#493e60;--theme-slate-600:#675a7b;--theme-text-200:#e6e1f1;--theme-text-300:#cec6df;--theme-text-400:#b5abc8;--theme-text-500:#aaa0bf}
+:root{--theme-money:#8a5900;--theme-danger:#a32939;--theme-money-soft:#fff0bd}
+:root[data-theme=dark]{--theme-money:#ffdb78;--theme-danger:#f8a2ac;--theme-money-soft:#514020}

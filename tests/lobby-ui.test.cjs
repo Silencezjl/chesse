@@ -2,7 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {JSDOM} = require('jsdom');
 const fs = require('node:fs');
-const source = fs.readFileSync('lobby-web/lobby.js','utf8');
+const source = fs.readFileSync('lobby-web/lobby.js','utf8').replace(/^import .*;$/gm,'');
 const clone = value => JSON.parse(JSON.stringify(value));
 const initial = () => ({id:'123456',owner_id:'p0',game_id:'cheese',options:{max_dice:6},stage:'waiting',seats:['p0','p1'],revision:1,session_id:null,session_members:[],server_time:Date.now()/1000,members:{p0:{name:'房主',avatar:'🐭',connected:true,ready:false},p1:{name:'朋友',avatar:'🦊',connected:true,ready:false}}});
 const tick = () => new Promise(resolve=>setImmediate(resolve));
@@ -33,6 +33,7 @@ async function app(start=initial(), directory=[], savedName='房主') {
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
+  w.createGameHost=el=>({mount(id,c){const child=w.document.createElement('div');child.dataset.gameSession=c.sessionId;el.replaceChildren(child);},clear(){el.replaceChildren()},conceal(){}});w.themeButton=()=>'';w.toggleTheme=()=>{};
   w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/player-names.js','utf8'));w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
   return {w,dom,calls,sockets,intervals,advance:ms=>clock+=ms,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }
@@ -57,23 +58,23 @@ test('readiness requests include an explicit value and configuration revision',a
     a.w.document.querySelector('#ready').click();await tick();const call=a.calls.find(c=>c.url.endsWith('/ready'));assert.deepEqual(call.body,{player_id:'p0',ready:true,revision:1});
   }finally{a.dom.window.close();}
 });
-test('presence updates and viewing the room do not replace the running iframe',async()=>{
+test('presence updates and viewing the room do not replace the running game',async()=>{
   const r=initial();r.stage='playing';r.session_id='session1';r.session_members=['p0','p1'];const a=await app(r);try{
-    const frame=a.w.document.querySelector('iframe');assert.ok(frame);a.w.document.querySelector('#show-room').click();assert.equal(a.w.document.querySelector('iframe'),frame);assert.equal(a.w.document.querySelector('#game-shell').hidden,true);
-    a.setRoom({...r,members:{...r.members,p1:{...r.members.p1,connected:false}}});assert.equal(a.w.document.querySelector('iframe'),frame);
-    a.w.document.querySelector('#resume').click();assert.equal(a.w.document.querySelector('iframe'),frame);assert.equal(a.w.document.querySelector('#game-shell').hidden,false);
+    const frame=a.w.document.querySelector('[data-game-session]');assert.ok(frame);a.w.document.querySelector('#show-room').click();assert.equal(a.w.document.querySelector('[data-game-session]'),frame);assert.equal(a.w.document.querySelector('#game-shell').hidden,true);
+    a.setRoom({...r,members:{...r.members,p1:{...r.members.p1,connected:false}}});assert.equal(a.w.document.querySelector('[data-game-session]'),frame);
+    a.w.document.querySelector('#resume').click();assert.equal(a.w.document.querySelector('[data-game-session]'),frame);assert.equal(a.w.document.querySelector('#game-shell').hidden,false);
   }finally{a.dom.window.close();}
 });
-test('cheese iframe is scoped to the current game session',async()=>{
+test('cheese mount is scoped to the current game session',async()=>{
   const room=initial();room.stage='playing';room.session_id='first';room.session_members=['p0','p1'];
   const a=await app(room);try{
-    assert.equal(a.w.document.querySelector('iframe').getAttribute('src'),'/cheese/?session=first');
+    assert.equal(a.w.document.querySelector('[data-game-session]').getAttribute('data-game-session'),'first');
     a.setRoom({...room,session_id:'second'});
-    assert.equal(a.w.document.querySelector('iframe').getAttribute('src'),'/cheese/?session=second');
+    assert.equal(a.w.document.querySelector('[data-game-session]').getAttribute('data-game-session'),'second');
   }finally{a.dom.window.close();}
 });
 test('a new member of a finished room is never sent into the old game',async()=>{
-  const r=initial();r.stage='finished';r.session_id='old';r.session_members=['p1'];const a=await app(r);try{assert.equal(a.w.document.querySelector('iframe'),null);assert.ok(a.w.document.querySelector('#next-session'));}finally{a.dom.window.close();}
+  const r=initial();r.stage='finished';r.session_id='old';r.session_members=['p1'];const a=await app(r);try{assert.equal(a.w.document.querySelector('[data-game-session]'),null);assert.ok(a.w.document.querySelector('#next-session'));}finally{a.dom.window.close();}
 });
 test('directory joins an unlocked room directly using saved device profile',async()=>{
   const a=await app(null,[{id:'222222',owner_name:'小明',owner_avatar:'🐱',game_id:'cheese',stage:'waiting',count:2,capacity:12,joinable:true,has_password:false}]);try{
@@ -99,7 +100,7 @@ test('password input and focus survive directory refresh',async()=>{
 test('candidates never mount a game or see a resume action',async()=>{
   const r=initial();r.stage='playing';r.session_id='active';r.session_members=['p1'];r.pending_member_ids=['p0'];r.seats=['p1'];
   const a=await app(r);try{
-    assert.equal(a.w.document.querySelector('iframe'),null);assert.equal(a.w.document.querySelector('#resume'),null);
+    assert.equal(a.w.document.querySelector('[data-game-session]'),null);assert.equal(a.w.document.querySelector('#resume'),null);
     assert.match(a.w.document.body.textContent,/候场/);
     a.w.document.querySelector('#room-menu').click();assert.equal(a.w.document.querySelector('#leave').disabled,false);
   }finally{a.dom.window.close();}
@@ -273,10 +274,10 @@ test('HTTP ping measures a server response and late HTTP replies cannot replace 
   finish({ok:true,json:async()=>({type:'pong'})});await stale;assert.equal(a.w.document.querySelector('.latency-label').textContent,'40ms');
  }finally{a.dom.window.close();}
 });
-test('in-game toolbar shows server RTT without replacing the game iframe',async()=>{
+test('in-game toolbar shows server RTT without replacing the mounted game',async()=>{
  const r=initial();r.stage='playing';r.session_id='ping-session';r.session_members=['p0','p1'];const a=await app(r);try{
-  const frame=a.w.document.querySelector('iframe'),socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(350);socket.onmessage({data:JSON.stringify({type:'pong',id})});
-  assert.equal(a.w.document.querySelector('.game-toolbar .latency-label').textContent,'350ms');assert.equal(a.w.document.querySelector('.game-toolbar .latency-badge').dataset.level,'bad');assert.equal(a.w.document.querySelector('iframe'),frame);
+  const frame=a.w.document.querySelector('[data-game-session]'),socket=a.sockets.at(-1),id=socket.sent.find(m=>m.type==='ping').id;a.advance(350);socket.onmessage({data:JSON.stringify({type:'pong',id})});
+  assert.equal(a.w.document.querySelector('.game-toolbar .latency-label').textContent,'350ms');assert.equal(a.w.document.querySelector('.game-toolbar .latency-badge').dataset.level,'bad');assert.equal(a.w.document.querySelector('[data-game-session]'),frame);
   a.w.dispatchEvent(new a.w.Event('offline'));assert.match(a.w.document.querySelector('.game-toolbar .latency-label').textContent,/未连接/);
  }finally{a.dom.window.close();}
 });
@@ -291,15 +292,15 @@ test('background tabs pause latency sampling while retaining the original room h
  }finally{a.dom.window.close();}
 });
 
-test('fullscreen targets the stable document, survives room updates and preserves the game iframe',async()=>{
+test('fullscreen targets the stable document, survives room updates and preserves the mounted game',async()=>{
  const r=initial();r.stage='playing';r.session_id='fullscreen-game';r.session_members=['p0','p1'];const a=await app(r);try{
   let active=null,requests=0;Object.defineProperty(a.w.document,'fullscreenElement',{get:()=>active,configurable:true});Object.defineProperty(a.w.document,'fullscreenEnabled',{value:true,configurable:true});
   a.w.document.documentElement.requestFullscreen=async options=>{assert.equal(options.navigationUI,'hide');requests++;active=a.w.document.documentElement;a.w.document.dispatchEvent(new a.w.Event('fullscreenchange'));};
   a.w.document.exitFullscreen=async()=>{active=null;a.w.document.dispatchEvent(new a.w.Event('fullscreenchange'));};
-  const frame=a.w.document.querySelector('iframe');a.w.document.querySelector('#fullscreen-game').click();await tick();
+  const frame=a.w.document.querySelector('[data-game-session]');a.w.document.querySelector('#fullscreen-game').click();await tick();
   assert.equal(requests,1);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-pressed'),'true');assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-label'),'退出全屏');
-  a.setRoom({...r,revision:2});assert.equal(active,a.w.document.documentElement);assert.equal(a.w.document.querySelector('iframe'),frame);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-pressed'),'true');
-  a.w.document.querySelector('#fullscreen-game').click();await tick();assert.equal(active,null);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-label'),'进入全屏');assert.equal(a.w.document.querySelector('iframe'),frame);
+  a.setRoom({...r,revision:2});assert.equal(active,a.w.document.documentElement);assert.equal(a.w.document.querySelector('[data-game-session]'),frame);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-pressed'),'true');
+  a.w.document.querySelector('#fullscreen-game').click();await tick();assert.equal(active,null);assert.equal(a.w.document.querySelector('#fullscreen-game').getAttribute('aria-label'),'进入全屏');assert.equal(a.w.document.querySelector('[data-game-session]'),frame);
   assert.equal(requests,1);
  }finally{a.dom.window.close();}
 });
