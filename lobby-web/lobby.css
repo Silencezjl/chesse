@@ -109,3 +109,5 @@ input,select,.nickname-editor{background:var(--theme-panel);color:var(--mobile-i
 button{background-color:var(--theme-primary);color:var(--theme-on-primary)}
 button.theme-toggle{font-size:22px;min-width:44px;padding:6px}.game-toolbar-actions{gap:4px}
 .top-actions,.fullscreen-toggle,.latency-badge,.profile-chip{background:var(--theme-raised)!important;color:var(--mobile-ink);border-color:var(--theme-border)}.fullscreen-toggle[aria-pressed=true]{background:var(--theme-soft)!important;color:var(--mobile-accent)}.room-hint,.status,.section-head>span{color:var(--mobile-muted)}
+
+.game-toolbar .game-status{display:flex;align-items:center;gap:6px;min-width:0}.game-status-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.game-toolbar .game-status .latency-badge{flex-shrink:0;margin-top:0;padding:0;background:transparent!important}.game-toolbar .latency-label{white-space:nowrap}@media(max-width:350px){.game-toolbar{gap:8px}.game-toolbar-title{gap:6px}.game-toolbar-title>.game-icon{width:28px;height:28px}.game-toolbar #show-room{padding:8px}}
