@@ -113,3 +113,5 @@ button.theme-toggle{font-size:22px;min-width:44px;padding:6px}.game-toolbar-acti
 .game-toolbar .game-status{display:flex;align-items:center;gap:6px;min-width:0}.game-status-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.game-toolbar .game-status .latency-badge{flex-shrink:0;margin-top:0;padding:0;background:transparent!important}.game-toolbar .latency-label{white-space:nowrap}@media(max-width:350px){.game-toolbar{gap:8px}.game-toolbar-title{gap:6px}.game-toolbar-title>.game-icon{width:28px;height:28px}.game-toolbar #show-room{padding:8px}}
 #toast{color:var(--mobile-background)}
 #awake-report{width:100%;min-width:0;resize:vertical;padding:12px;border:1px solid var(--mobile-line);border-radius:12px;background:var(--theme-panel);color:var(--mobile-ink);font:12px/1.5 monospace;user-select:text;-webkit-user-select:text}
+
+.awake-check-link{display:flex;align-items:center;justify-content:center;min-height:48px;padding:11px 16px;border-radius:12px;text-decoration:none;font-weight:650}

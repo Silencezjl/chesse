@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>屏幕常亮 · 独立对照测试</title>
+<style>
+:root{font:16px/1.6 system-ui,sans-serif;color-scheme:light dark;--bg:#f6f5fc;--panel:#fff;--ink:#28243d;--muted:#716b87;--line:#e4e0f1;--primary:#5945ce}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1729;--panel:#2c253e;--ink:#e6e1f1;--muted:#b5abc8;--line:#493e60;--primary:#8064e2}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:480px;margin:auto;padding:24px 16px calc(24px + env(safe-area-inset-bottom))}h1{font-size:24px;margin:0}p{margin:12px 0}.muted{color:var(--muted);font-size:14px}.card{padding:18px;border:1px solid var(--line);background:var(--panel);border-radius:18px;margin:20px 0}.actions{display:grid;gap:12px}button{font:inherit;min-height:48px;border:0;border-radius:12px;padding:12px;color:#fff;background:var(--primary);cursor:pointer}button.secondary{background:transparent;color:var(--ink);border:1px solid var(--line)}button:disabled{opacity:.5;cursor:default}#status{font-weight:650}#elapsed{font-size:28px;font-variant-numeric:tabular-nums}textarea{width:100%;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font:12px/1.5 monospace;resize:vertical}details{margin-top:16px}summary{min-height:44px;cursor:pointer}a{color:var(--primary)}[role=status]{overflow-wrap:anywhere}
+</style>
+</head>
+<body><main>
+<h1>屏幕常亮对照测试</h1>
+<p class="muted">此页只调用浏览器原生常亮接口，不加载大厅、游戏或自动恢复逻辑，不访问房间数据。</p>
+<section class="card" aria-label="测试状态"><div id="elapsed">0 秒</div><p id="status" role="status" aria-live="polite">尚未开始</p><p class="muted">点击开始后，把手机放着，保持此页在前台 60 秒，不触屏、不切后台、不按电源键。如果息屏，唤醒后直接复制结果。</p></section>
+<div class="actions">
+<button id="start">开始 60 秒测试</button>
+<button id="fullscreen" class="secondary">进入全屏</button>
+<button id="stop" class="secondary" disabled>结束并释放常亮</button>
+<button id="copy" class="secondary">复制测试结果</button>
+</div>
+<p class="muted">可先普通模式测试，再进入全屏重新测一次。若两次都息屏，可在同一台手机的另一款浏览器打开此链接对照。</p>
+<p id="feedback" role="status"></p>
+<details><summary>查看测试记录</summary><textarea id="report" aria-label="常亮对照测试记录" rows="10" readonly></textarea></details>
+<p class="muted">结果包含浏览器、系统信息和本页事件，不包含身份、房间或游戏数据，不自动上传。网页不能直接检测硬件亮屏，请同时反馈肉眼观察结果。</p>
+</main>
+<script>
+// Deliberately independent of the platform controller: one native request per start.
+const $=id=>document.getElementById(id);
+let sentinel=null,run=null,timer=null,requesting=false,serial=0,generation=0;
+const events=[],runs=[];
+const environment={browser:navigator.userAgent,secure:isSecureContext,supported:typeof navigator.wakeLock?.request==='function'};
+function record(event,detail){events.push({at:new Date().toISOString(),event,visible:!document.hidden,...(detail?{detail}:{})});if(events.length>60)events.shift();paintReport();}
+function report(){return {kind:'native-wake-lock-control',version:1,reportedAt:new Date().toISOString(),...environment,fullscreen:Boolean(document.fullscreenElement),released:sentinel?.released ?? null,runs:runs.map(r=>({...r})),events};}
+function paintReport(){$('report').value=JSON.stringify(report(),null,2);}
+function clearTimer(){if(timer!==null)clearInterval(timer);timer=null;}
+function interrupt(reason){
+  if(!run||run.result!=='running')return;
+  clearTimer();run.result='interrupted';run.reason=reason;run.durationMs=Date.now()-run.startedAt;
+  $('elapsed').textContent=`${Math.floor(run.durationMs/1000)} 秒`;
+  $('status').textContent='测试中断：页面隐藏或常亮被释放。请唤醒后复制结果，并说明是否发生息屏。';
+}
+async function enrichEnvironment(){
+  try{environment.browserDetails=await navigator.userAgentData?.getHighEntropyValues(['model','platformVersion','fullVersionList']);}catch{}
+  try{environment.permission=(await navigator.permissions.query({name:'screen-wake-lock'})).state;}catch{}
+  const policy=document.permissionsPolicy || document.featurePolicy;
+  if(policy?.allowsFeature)environment.policyAllowsWakeLock=policy.allowsFeature('screen-wake-lock');
+  paintReport();
+}
+async function release(){const previous=sentinel;sentinel=null;if(previous)await previous.release();}
+$('start').onclick=async()=>{
+  if(requesting)return;
+  const version=++generation;requesting=true;$('start').disabled=true;
+  clearTimer();if(run?.result==='running'){run.result='restarted';run.durationMs=Date.now()-run.startedAt;}
+  run=null;
+  try{
+    await release();
+    if(!environment.secure||!environment.supported)throw new Error('此浏览器或入口不支持原生常亮，请使用 HTTPS Chrome。');
+    void enrichEnvironment();
+    const lock=await navigator.wakeLock.request('screen');
+    if(version!==generation){await lock.release();return;}
+    sentinel=lock;
+    run={id:++serial,startedAt:Date.now(),fullscreen:Boolean(document.fullscreenElement),result:'running'};runs.push(run);if(runs.length>6)runs.shift();
+    record('native-request-accepted',{released:lock.released});
+    lock.addEventListener('release',()=>{if(sentinel===lock){record('native-release');interrupt('native-release');paintReport();}},{once:true});
+    $('stop').disabled=false;$('elapsed').textContent='0 秒';$('status').textContent='浏览器已接受申请，请静置 60 秒观察屏幕。';
+    if(lock.released||document.hidden){interrupt(lock.released?'already-released':'hidden');return;}
+    timer=setInterval(()=>{
+      const elapsed=Date.now()-run.startedAt;$('elapsed').textContent=`${Math.floor(elapsed/1000)} 秒`;
+      if(document.hidden||lock.released){interrupt(document.hidden?'hidden':'native-release');paintReport();return;}
+      if(elapsed>=60000){clearTimer();run.result='visible-for-60s';run.durationMs=elapsed;record('observation-ended');$('status').textContent='页面保持可见已满 60 秒，请确认屏幕是否始终亮着，并复制结果。';}
+    },1000);
+  }catch(error){$('status').textContent='申请失败：'+error.message;record('request-error',{name:error.name,message:error.message});}
+  finally{requesting=false;$('start').disabled=false;paintReport();}
+};
+$('stop').onclick=async()=>{
+  if(run?.result==='running'){run.result='stopped';run.durationMs=Date.now()-run.startedAt;}
+  clearTimer();record('manual-stop');await release();$('stop').disabled=true;$('status').textContent='已结束并释放常亮。';paintReport();
+};
+$('fullscreen').onclick=async()=>{
+  try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen({navigationUI:'hide'});}
+  catch(error){$('feedback').textContent='浏览器未允许全屏：'+error.message;record('fullscreen-error',{message:error.message});}
+};
+$('copy').onclick=async()=>{
+  paintReport();try{await navigator.clipboard.writeText($('report').value);$('feedback').textContent='测试结果已复制，请同时说明是否息屏。';}
+  catch{$('report').closest('details').open=true;$('report').focus();$('report').select();$('feedback').textContent='请复制已选中的测试记录。';}
+};
+document.addEventListener('visibilitychange',()=>{record(document.hidden?'hidden':'visible');if(document.hidden)interrupt('hidden');paintReport();});
+document.addEventListener('fullscreenchange',()=>{$('fullscreen').textContent=document.fullscreenElement?'退出全屏':'进入全屏';record('fullscreen-change',{fullscreen:Boolean(document.fullscreenElement)});});
+window.addEventListener('pagehide',()=>{generation++;clearTimer();record('pagehide');interrupt('pagehide');void release();});
+record('page-loaded');
+</script>
+</body></html>

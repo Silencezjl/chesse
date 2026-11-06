@@ -129,6 +129,14 @@ Redis 使用 `lobby:` 命名空间，房间及游戏状态由服务端统一管�
 
 房间“更多”显示“已申请”，表示浏览器接受了申请，不能据此断言 Android 系统实际保持亮屏。手动锁屏、省电模式或浏览器策略仍可中止常亮。可进入“常亮检测”手动重新申请、复制诊断信息；诊断仅在当前页面内存保留最近 60 条状态、失败原因与可见性记录，复制时附上浏览器版本，不包含身份、房间或游戏私密信息，也不自动上传。若仍息屏，应唤醒后先复制诊断再刷新页面。HTTP 已跳转 HTTPS，移除了未能可靠防息屏的视频备用方案。
 
+### 真机常亮对照排查
+
+若游戏中仍按系统休眠时长息屏，可打开 `https://111.229.79.183/awake-check.html`（房间“常亮检测”中也有入口）。此独立静态页只在点击开始时调用一次原生 `navigator.wakeLock.request('screen')`，不加载平台控制器、游戏、WebSocket 或房间接口；支持普通模式和全屏分别观察 60 秒。页面隐藏或原生锁释放会记录中断，不自动恢复、不把唤醒后的计时补算为成功。60 秒页面可见仅为软件观测，仍需用户确认硬件是否始终亮屏。
+
+对照页若正常而游戏异常，继续排查平台差异；若同一站点的独立页也异常，则进一步用同设备不同浏览器或 [Chrome 官方示例](https://googlechrome.github.io/samples/wakelock/) 区分浏览器、站点设置和系统因素，不能直接归因于某个手机品牌。复制的本地报告会附上可用的完整浏览器与系统版本、型号及权限状态，不自动上传。
+
+浏览器验证：`PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome node scripts/smoke_awake_check.cjs`。仅验证 UI、原生接口生命周期、剪贴板和无房间请求；不替代 Android 真机亮屏观察。
+
 ## 上海 HTTPS 与证书维护
 
 `docker-compose.https.yml` 为正式环境增加 80/443 端口及只读证书挂载；普通 Compose 无证书也可启动。公网 IP 使用 Let's Encrypt 的短期证书，证书与账户位于 `/opt/chesse-acme/letsencrypt`，ACME 校验目录为 `/opt/chesse-acme/webroot`，不进入 Git。80、443 端口需保持开放。
