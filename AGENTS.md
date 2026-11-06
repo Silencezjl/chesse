@@ -3,7 +3,7 @@
 开始开发前阅读 `README.md` 和 `HANDOFF.md`。本项目是统一游戏大厅，包含奶酪大盗和 Holdem 线下筹码管理。
 
 - `backend/lobby/` 管理公共房间、游戏注册与运行时；`backend/` 是 FastAPI 入口和奶酪规则，`backend/games/holdem/` 是 Holdem 后端。
-- `lobby-web/` 是大厅入口；`web/platform/` 管理游戏生命周期和全平台主题；`web/games/` 是三个原生游戏模块，统一使用根目录 Vite 构建及 React。Nginx 提供统一 HTTP/WebSocket 入口。
+- `lobby-web/` 是大厅入口；`web/platform/` 管理游戏生命周期和全平台主题；`web/games/` 是三个原生游戏模块，统一使用根目录 Vite 构建，React 游戏共用同一运行库。Nginx 提供统一 HTTP/WebSocket 入口。
 - Redis 是公共大厅与 Holdem 必需的；各模块使用 `lobby:` 前缀隔离存储。不得清空或覆盖旧项目 Redis 数据，禁止对现有 volume 执行删除操作。当前后端只支持单 worker。
 
 ## 启动
