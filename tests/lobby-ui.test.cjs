@@ -33,7 +33,7 @@ async function app(start=initial(), directory=[], savedName='房主') {
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
-  w.createScreenAwake=()=>({setActive(){}});w.createGameHost=el=>({mount(id,c){const child=w.document.createElement('div');child.dataset.gameSession=c.sessionId;el.replaceChildren(child);},clear(){el.replaceChildren()},conceal(){}});w.themeButton=()=>'';w.toggleTheme=()=>{};
+  w.awake={status:'active',setActive(){},retry(){this.retried=true;},diagnostics:()=>({version:2,interruptions:1,events:[{event:'system-release'}]})};w.createScreenAwake=()=>w.awake;w.createGameHost=el=>({mount(id,c){const child=w.document.createElement('div');child.dataset.gameSession=c.sessionId;el.replaceChildren(child);},clear(){el.replaceChildren()},conceal(){}});w.themeButton=()=>'';w.toggleTheme=()=>{};
   w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/player-names.js','utf8'));w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
   return {w,dom,calls,sockets,intervals,advance:ms=>clock+=ms,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }
@@ -310,4 +310,17 @@ test('unsupported fullscreen opens guidance and denied requests keep the page us
   a.w.document.documentElement.requestFullscreen=async()=>{throw new Error('Denied');};
   a.w.document.querySelector('#fullscreen-header').click();await tick();assert.match(a.w.document.querySelector('#toast').textContent,/未允许全屏/);assert.equal(a.w.document.querySelector('#fullscreen-header').disabled,false);assert.equal(a.w.document.querySelector('#fullscreen-header').getAttribute('aria-pressed'),'false');assert.ok(a.w.document.querySelector('#create-room'));
  }finally{a.dom.window.close();}
+});
+
+test('wake diagnostics can be copied after an interruption without including player or room data',async()=>{
+  const room=initial();room.stage='playing';room.session_id='awake-session';room.session_members=['p0','p1'];
+  const a=await app(room);try{
+    let report;Object.defineProperty(a.w.navigator,'clipboard',{value:{writeText:async text=>{report=JSON.parse(text);}}});
+    a.w.document.querySelector('#show-room').click();a.w.document.querySelector('#room-menu').click();
+    assert.match(a.w.document.querySelector('#screen-awake-status').textContent,/已申请/);
+    a.w.document.querySelector('#awake-details').click();a.w.document.querySelector('#awake-copy').click();await tick();
+    assert.equal(report.interruptions,1);assert.equal(report.version,2);assert.equal(report.browser,a.w.navigator.userAgent);
+    assert.ok(!JSON.stringify(report).includes(room.id));assert.ok(!JSON.stringify(report).includes('房主'));
+    a.w.document.querySelector('#awake-retry').click();assert.equal(a.w.awake.retried,true);
+  }finally{a.dom.window.close();}
 });
