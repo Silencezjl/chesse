@@ -65,7 +65,7 @@ export default function useWebSocket(platform) {
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-      
+
       switch (msg.type) {
         case 'pong':
           if (pingTimestamp.current) {
@@ -142,10 +142,10 @@ export default function useWebSocket(platform) {
         case 'left_room':
           setRoomState(null);
           setGameInfo(null);
-          
+
           break;
         case 'no_room':
-          
+
           break;
         case 'error':
           pendingRef.current = false; setActionPending(false);
