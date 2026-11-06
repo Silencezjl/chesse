@@ -15,3 +15,10 @@ button,input,select{-webkit-tap-highlight-color:transparent}button{min-height:va
 html{overscroll-behavior-y:none}
 html:has([role=dialog][aria-modal=true]){overflow:hidden}
 [role=dialog]{overscroll-behavior-y:contain}
+
+/* App-like touch behavior while keeping text fields editable. */
+@media (hover:none) and (pointer:coarse){
+  body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  input,textarea,[contenteditable]:not([contenteditable="false"]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  img{-webkit-user-drag:none}
+}

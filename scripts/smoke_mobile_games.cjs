@@ -56,7 +56,8 @@ try{for(const game of ['cheese','bluff']){
    const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
    await f.locator('.role').waitFor();
-   const card=f.locator('.role-card img');const visibleCard=await card.boundingBox();assert.ok(visibleCard.y>=0&&visibleCard.y+visibleCard.height<=800);await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
+   if(i===0){await new Promise(resolve=>setTimeout(resolve,6500));assert.equal(await f.locator('.role').count(),1,'identity must stay visible during a long hold and room refresh');}
+   const card=f.locator('.role-card img');const visibleCard=await card.boundingBox();const description=await f.locator('.role-description').boundingBox();assert.ok(visibleCard.y>=0&&visibleCard.y+visibleCard.height<=800);assert.ok(description.y>=visibleCard.y+visibleCard.height,'role description should be below the card');assert.ok(visibleCard.width>=180,'role card should be large enough to read');await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
    await pages[i].screenshot({path:`/tmp/chesse-bluff-role-${i}.png`});
    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    await f.locator('.role').waitFor({state:'detached'});assert.equal(await f.locator('#ready').isEnabled(),true);await touch.detach();

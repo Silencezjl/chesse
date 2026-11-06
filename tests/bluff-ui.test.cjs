@@ -42,8 +42,15 @@ test('hold reveals identity and release or cancellation hides it while preservin
   try {
     game.send(state());
     assert.equal(game.w.document.querySelector('#ready').disabled, true);
-    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerdown');
+    const button = game.w.document.querySelector('#role-toggle');
+    pointer(game.w, button, 'pointerdown');
     assert.equal(game.w.document.querySelector('.role').textContent, '老实人');
+    const touch = new game.w.Event('touchstart', {bubbles:true, cancelable:true});
+    button.dispatchEvent(touch);
+    assert.equal(touch.defaultPrevented, true);
+    const menu = new game.w.MouseEvent('contextmenu', {bubbles:true, cancelable:true});
+    button.dispatchEvent(menu);
+    assert.equal(menu.defaultPrevented, true);
     game.send(state());
     pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerup');
     assert.equal(game.w.document.querySelector('.role'), null);

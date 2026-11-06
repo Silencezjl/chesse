@@ -85,6 +85,10 @@ function render(){
  const roleButton=document.getElementById('role-toggle');
  if(roleButton){
   roleButton.oncontextmenu=e=>e.preventDefault();
+  // Pointer cancellation from a native long-press gesture would hide the card.
+  // Prevent that gesture at its touch source; actual cancellation still conceals it.
+  roleButton.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+  roleButton.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
   roleButton.onpointerdown=e=>{if(e.button!==0 || holdingPointer!==null)return;e.preventDefault();holdingPointer=e.pointerId;try{roleButton.setPointerCapture(e.pointerId)}catch{}revealRole();};
   roleButton.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();if(!e.repeat){holdingKey=true;revealRole();}}};
  }

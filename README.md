@@ -20,7 +20,7 @@ docker compose up -d --no-build
 docker compose ps
 ```
 
-上海实例使用独立的 `chesse-shanghai_lobby_redis_data` 数据卷。发布时保留现有卷，后端保持单 worker。开发验证继续使用 dify 的 18088/18089 隔离实例。
+上海实例使用独立的 `chesse-shanghai_lobby_redis_data` 数据卷。发布时保留现有卷，后端保持单 worker。按项目当前发布约定，完成本地代码检查后直接发布上海线上，不再启动隔离体验环境；会创建房间或重启服务的冒烟脚本不得指向线上。
 
 ## 启动
 

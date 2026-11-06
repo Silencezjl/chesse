@@ -6,12 +6,12 @@
 
 .round-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 button.end-game{min-height:44px;padding:8px 12px;background:#fff5f2;border:1px solid #e6c7bf;color:#9b453b;font-size:14px}
-.role-reveal{display:flex;align-items:center;gap:16px}
-.role-card{position:relative;flex:0 0 min(40%, 150px);aspect-ratio:2/3;overflow:hidden;border-radius:12px;box-shadow:0 5px 14px #20183430}
+.role-reveal{display:flex;flex-direction:column;align-items:center;gap:12px}
+.role-card{position:relative;flex:none;width:min(220px,calc((100dvh - var(--bluff-actions-height, 80px) - 150px) * 2 / 3));aspect-ratio:2/3;overflow:hidden;border-radius:12px;box-shadow:0 5px 14px #20183430}
 .role-card img{display:block;width:100%;height:100%;object-fit:cover}
 .role-card .role{position:absolute;top:8%;left:4px;right:4px;text-align:center;color:#fff;font-size:clamp(20px,6vw,27px);line-height:1.2;text-shadow:0 2px 4px #3a241c99}
 .role-card-judge{background:#f69d19}.role-card-honest{background:#087a78}.role-card-bluffer{background:#ea4942}
-.role-description{flex:1;color:#554d69;font-size:14px;line-height:1.6}
+.role-description{color:#554d69;font-size:15px;line-height:1.6;text-align:center}
 @media(max-width:330px){.role-reveal{gap:10px}.role-description{font-size:13px}}
 
-main{padding-bottom:calc(var(--bluff-actions-height, 0px) + 24px + env(safe-area-inset-bottom))}.game-actions{position:fixed;z-index:10;bottom:0;left:0;right:0;display:flex;gap:10px;justify-content:center;padding:12px max(14px, calc((100% - 452px)/2)) calc(12px + env(safe-area-inset-bottom));background:#fffffff5;border-top:1px solid #e4e0f1}.game-actions button{flex:1;min-width:0}.game-actions button:only-child{max-width:452px}#role-content>.muted{display:none}.role-reveal{position:fixed;z-index:11;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90%,420px);padding:18px;background:#fff;border:1px solid #e4e0f1;border-radius:18px;box-shadow:0 8px 40px #20183455;pointer-events:none}
+main{padding-bottom:calc(var(--bluff-actions-height, 0px) + 24px + env(safe-area-inset-bottom))}.game-actions{position:fixed;z-index:10;bottom:0;left:0;right:0;display:flex;gap:10px;justify-content:center;padding:12px max(14px, calc((100% - 452px)/2)) calc(12px + env(safe-area-inset-bottom));background:#fffffff5;border-top:1px solid #e4e0f1}.game-actions button{flex:1;min-width:0}.game-actions button:only-child{max-width:452px}#role-content>.muted{display:none}.role-reveal{position:fixed;z-index:11;left:50%;top:calc((100% - var(--bluff-actions-height, 0px))/2);transform:translate(-50%,-50%);width:min(90%,360px);padding:18px;background:#fff;border:1px solid #e4e0f1;border-radius:18px;box-shadow:0 8px 40px #20183455;pointer-events:none}
