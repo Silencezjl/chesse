@@ -135,6 +135,8 @@ Redis 使用 `lobby:` 命名空间，房间及游戏状态由服务端统一管�
 
 对照页若正常而游戏异常，继续排查平台差异；若同一站点的独立页也异常，则进一步用同设备不同浏览器或 [Chrome 官方示例](https://googlechrome.github.io/samples/wakelock/) 区分浏览器、站点设置和系统因素，不能直接归因于某个手机品牌。复制的本地报告会附上可用的完整浏览器与系统版本、型号及权限状态，不自动上传。
 
+已验证案例：荣耀 Magic 8 Pro Air / Android 17 上，Chrome 138.0.7204.179 即使报告申请成功仍约 30 秒息屏；同机自带浏览器、微信内置浏览器正常，用户升级 Chrome 后确认恢复常亮。遇到原生对照也失败时，应优先核对完整浏览器版本并更新复测；此单例不作为通用最低版本限制。
+
 浏览器验证：`PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome node scripts/smoke_awake_check.cjs`。仅验证 UI、原生接口生命周期、剪贴板和无房间请求；不替代 Android 真机亮屏观察。
 
 ## 上海 HTTPS 与证书维护

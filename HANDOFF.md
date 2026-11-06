@@ -224,5 +224,5 @@
 ### 原生对照真机反馈补充
 
 - 真机 Client Hints 确认 Google Chrome 138.0.7204.179、Android 17.0.0、LDY-AN00，permission=granted，policyAllowsWakeLock=true。原生独立页全屏在约 32.8 秒时隐藏并释放；用户随后确认无触屏的普通模式也在约 25 秒变暗、30 秒息屏。首次普通模式 visible-for-60s 期间存在触屏，不能用作有效常亮通过证据。
-- 原生极简页同样复现，已将现象缩小到此设备的 Chrome/原生常亮链路，未认定是平台提前释放、特定荣耀 ROM 缺陷或全屏专属问题。等待同设备自带浏览器的对照结果，之后再判定是否需要网页替代方案。
-- 此 Chrome 版本发布于 2025-07-29：[Chrome 官方发布记录](https://chromereleases.googleblog.com/2025/07/chrome-for-android-update_29.html)。可先升级 Chrome 复测兼容性，尚无证据证明升级必然解决。
+- 原生极简页同样复现，将现象缩小到此设备的 Chrome/原生常亮链路。最终同机对照：荣耀自带浏览器与微信内置浏览器均不息屏；用户更新 Chrome 后确认也不再息屏。由此将本例定位为旧 Chrome 版本在该设备上的兼容问题，升级解决，无需增加网页视频等替代方案。
+- 此 Chrome 版本发布于 2025-07-29：[Chrome 官方发布记录](https://chromereleases.googleblog.com/2025/07/chrome-for-android-update_29.html)。本例已获用户真机升级验收；后续同类问题优先收集完整浏览器版本并升级复测。未收集升级后的具体版本，不推导通用最低版本，也不将本例扩大为所有荣耀/Android 17 设备的问题。
