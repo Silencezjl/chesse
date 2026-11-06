@@ -117,7 +117,7 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
     is_judge = player == state['judge']
     if kind == 'draw':
         if not is_judge or state['phase'] != 'choose':
-            raise RuleError('请等待想想选择题目')
+            raise RuleError('请等待大聪明选择题目')
         difficulty = data.get('difficulty')
         if not isinstance(difficulty, int) or isinstance(difficulty, bool) or difficulty not in (1, 2, 3):
             raise RuleError('请选择 1–3 分难度')
@@ -129,7 +129,7 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
         state.update(question_id=q['id'], phase='prepare', ready=[])
     elif kind == 'skip':
         if not is_judge or state['phase'] != 'prepare':
-            raise RuleError('只能由想想在查看答案之前换题')
+            raise RuleError('只能由大聪明在查看答案之前换题')
         state.update(question_id=None, phase='choose', ready=[])
     elif kind == 'ready':
         if state['phase'] != 'prepare':
@@ -142,7 +142,7 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
             state.update(phase='viewing', remaining=PEEK_SECONDS - .25, deadline=now + PEEK_SECONDS)
     elif kind == 'challenge':
         if not is_judge or state['phase'] != 'discussion' or state['challenge'] is not None:
-            raise RuleError('只有想想可以质疑一次')
+            raise RuleError('只有大聪明可以质疑一次')
         target = data.get('target_id')
         if target not in state['players'] or target == player:
             raise RuleError('请选择其他参与玩家')
@@ -174,7 +174,7 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
         state.update(phase='reveal', result=result)
     elif kind == 'next':
         if state['phase'] != 'reveal' or player not in (state['judge'], state['owner_id']):
-            raise RuleError('等待想想或房主进入下一轮')
+            raise RuleError('等待大聪明或房主进入下一轮')
         state['round_index'] += 1
         if state['round_index'] >= len(state['players']) * state['circles']:
             state.update(phase='finished', deadline=None)

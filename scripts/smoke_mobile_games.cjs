@@ -48,7 +48,10 @@ try{for(const game of ['cheese','bluff']){
    const f=frames[i],role=f.locator('#role-toggle');await f.locator('#ready').waitFor();assert.equal(await f.locator('#ready').isDisabled(),true);
    const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
-   await f.locator('.role').waitFor();await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+   await f.locator('.role').waitFor();
+   const card=f.locator('.role-card img');await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
+   await pages[i].screenshot({path:`/tmp/chesse-bluff-role-${i}.png`});
+   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    await f.locator('.role').waitFor({state:'detached'});assert.equal(await f.locator('#ready').isEnabled(),true);await touch.detach();
   }
   await pages[0].reload();await frames[0].locator('#ready:not(:disabled)').waitFor();assert.equal(await frames[0].locator('.role').count(),0);
@@ -58,7 +61,9 @@ try{for(const game of ['cheese','bluff']){
   for(let step=0;step<2;step++){await frames[judgeIndex].locator('.target').first().click();await frames[judgeIndex].locator('#confirm-target').click();await frames[judgeIndex].getByRole('dialog').waitFor({state:'detached'});}
   await frames[0].getByRole('heading',{name:'本轮揭晓',exact:true}).waitFor();
   // End the session after the completed round through the actual confirmation UI.
-  await frames[0].locator('#scores summary').click();await frames[0].locator('#terminate').click();await frames[0].locator('#confirm-target').click();await frames[0].getByText('本局已提前结束',{exact:true}).waitFor();
+  assert.equal(await frames[1].locator('#terminate').count(),0);
+  await frames[0].locator('#terminate').click();await frames[0].locator('#cancel-target').click();
+  await frames[0].locator('#terminate').click();await frames[0].locator('#confirm-target').click();await frames[0].getByText('本局已提前结束',{exact:true}).waitFor();
  }
  for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:800});assert.ok(await pages[0].evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.ok(await pages[0].evaluate(()=>document.scrollingElement.scrollHeight<=innerHeight+1));const frame=pages[0].frames()[1];assert.ok(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${game} overflow ${width}`);}
  const child=pages[0].frames()[1];const bottom=await child.evaluate(()=>{scrollTo(0,1e6);return {y:scrollY,h:innerHeight,total:document.scrollingElement.scrollHeight};});if(bottom.total>bottom.h+1)assert.ok(bottom.y>0);

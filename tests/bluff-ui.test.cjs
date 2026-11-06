@@ -13,13 +13,14 @@ function openGame(storage = {}) {
   w.PlayerNames = {html: text => text};
   w.setInterval = () => 1;
   let socket;
+  const messages = [];
   w.WebSocket = class {
     static OPEN = 1;
     constructor(){socket=this;this.readyState=1;}
-    send(){}
+    send(data){messages.push(JSON.parse(data));}
   };
   w.eval(source);
-  return {w, dom, send(data){socket.onmessage({data:JSON.stringify({type:'state', data})});}};
+  return {w, dom, messages, send(data){socket.onmessage({data:JSON.stringify({type:'state', data})});}};
 }
 
 function state(session = 'session1', round = 1) {
@@ -79,4 +80,37 @@ test('viewed identity survives reload within the same session and round', () => 
     assert.equal(restored.w.document.querySelector('.role'), null);
     assert.equal(restored.w.document.querySelector('#ready').disabled, false);
   } finally { restored.dom.window.close(); }
+});
+
+test('each role card is only rendered while its owner holds the button', () => {
+  for (const [role, name] of [['judge','大聪明'],['honest','老实人'],['bluffer','瞎掰人']]) {
+    const game = openGame();
+    try {
+      game.send({...state(), my_role:role});
+      assert.equal(game.w.document.querySelector('.role-card'), null);
+      pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerdown');
+      assert.equal(game.w.document.querySelector('.role').textContent, name);
+      assert.equal(game.w.document.querySelector('.role-card img').getAttribute('src'), `/bluff/assets/role-${role}-v1.webp`);
+      pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerup');
+      assert.equal(game.w.document.querySelector('.role-card'), null);
+    } finally { game.dom.window.close(); }
+  }
+});
+
+test('only the owner can open and confirm ending the game, including while paused', () => {
+  const game = openGame();
+  try {
+    game.send(state());
+    assert.equal(game.w.document.querySelector('#terminate'), null);
+    game.send({...state(), owner_id:'p1', paused:true});
+    assert.ok(game.w.document.querySelector('header #terminate'));
+    assert.equal(game.w.document.querySelector('#scores #terminate'), null);
+    game.w.document.querySelector('#terminate').click();
+    assert.match(game.w.document.querySelector('[role=dialog]').textContent, /未完成回合不会计分/);
+    game.w.document.querySelector('#cancel-target').click();
+    assert.equal(game.messages.length, 0);
+    game.w.document.querySelector('#terminate').click();
+    game.w.document.querySelector('#confirm-target').click();
+    assert.equal(game.messages[0].type, 'terminate');
+  } finally { game.dom.window.close(); }
 });
