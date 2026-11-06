@@ -5,7 +5,6 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 for(const game of ['holdem','bluff','cheese']){
  const page=await browser.newPage({viewport:{width:360,height:800},isMobile:true,hasTouch:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(({game})=>{
-  Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.lastAwakeReport=JSON.parse(text);}}});
   window.wakeLocks=[];Object.defineProperty(navigator,'wakeLock',{value:{request:async()=>{const lock=new EventTarget();lock.released=false;lock.release=async()=>{lock.released=true;lock.dispatchEvent(new Event('release'))};window.wakeLocks.push(lock);return lock;}}});
   localStorage.setItem('lobby_name','测试玩家');window.testGame=game;window.sockets=[];
   const members={p0:{name:'测试玩家',avatar:'animal-01',connected:true},p1:{name:'朋友',avatar:'animal-02',connected:true},p2:{name:'朋友二',avatar:'animal-03',connected:true}};
@@ -20,16 +19,13 @@ for(const game of ['holdem','bluff','cheese']){
  for(const width of [320,360,430]){await page.setViewportSize({width,height:800});const geometry=await page.locator('.game-status').evaluate(el=>{const label=el.querySelector('.game-status-label'),badge=el.querySelector('.latency-badge'),a=label.getBoundingClientRect(),b=badge.getBoundingClientRect();return {text:label.textContent,a:{y:a.y,h:a.height,w:a.width,scroll:label.scrollWidth,client:label.clientWidth},b:{y:b.y,h:b.height},overflow:document.documentElement.scrollWidth>innerWidth};});assert.equal(geometry.text,'游戏中');assert.ok(Math.abs(geometry.a.y+geometry.a.h/2-geometry.b.y-geometry.b.h/2)<2&&!geometry.overflow,JSON.stringify(geometry));assert.ok(geometry.a.scroll<=geometry.a.client,JSON.stringify(geometry));}await page.setViewportSize({width:360,height:800});
  const before=await page.evaluate(()=>window.sockets.length);await page.locator('[data-theme-toggle]').last().click();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');assert.equal(await page.evaluate(()=>window.sockets.length),before);await page.waitForFunction(()=>window.wakeLocks.some(lock=>!lock.released));assert.equal(await host.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(27, 23, 41)');
  await page.locator('#show-room').click();assert.equal(await host.isVisible(),false);
- await page.locator('#room-menu').click();await page.locator('#awake-details').click();
+ await page.locator('#room-menu').click();
+ assert.equal(await page.locator('#screen-awake-status').textContent(),'已申请');
  await page.evaluate(()=>window.wakeLocks.at(-1).release());
+ await page.waitForFunction(()=>document.querySelector('#screen-awake-status').textContent==='已暂停，触屏重试');
+ await page.locator('#close-sheet').click();
  await page.waitForFunction(()=>window.wakeLocks.length>=2&&!window.wakeLocks.at(-1).released);
- await page.locator('#awake-copy').click();
- const wakeReport=await page.evaluate(()=>window.lastAwakeReport);
- assert.equal(wakeReport.interruptions,1);assert.equal(wakeReport.status,'active');assert.equal(wakeReport.released,false);
- assert.ok(!JSON.stringify(wakeReport).includes('123456'));assert.equal(await page.locator('#screen-awake-status').textContent(),'已申请');
- await page.setViewportSize({width:320,height:800});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
- if(game==='holdem')await page.screenshot({path:'/tmp/platform-awake-diagnostics.png',animations:'disabled'});
- await page.setViewportSize({width:360,height:800});await page.locator('#close-sheet').click();await page.locator('#resume').click();assert.equal(await page.evaluate(()=>window.sockets.length),before);
+ await page.locator('#resume').click();assert.equal(await page.evaluate(()=>window.sockets.length),before);
  if(game==='bluff'){await host.locator('[data-bank="1"]').click();const box=await host.locator('#role-toggle').boundingBox(),touch=await page.context().newCDPSession(page);await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});await host.locator('.role-card').waitFor();await new Promise(resolve=>setTimeout(resolve,6500));assert.equal(await host.locator('.role-card').count(),1);await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await host.locator('.role-card').waitFor({state:'detached'});await touch.detach();await host.locator('#role-toggle').dispatchEvent('pointerdown',{button:0,pointerId:1});await host.locator('.role-card').waitFor();await page.locator('#show-room').click();assert.equal(await host.locator('.role-card').count(),0);await page.locator('#resume').click();}
  if(game==='cheese'){
   await page.evaluate(()=>{window.gameState.my_info.same_group=[{id:'p1',name:'其他玩家',avatar:'animal-02',is_thief:true},{id:'p2',name:'另一个玩家',avatar:'animal-03'}];window.sockets.find(s=>s.url.includes('/ws/')&&!s.url.includes('/lobby/')).update()});

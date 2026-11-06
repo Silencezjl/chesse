@@ -7,7 +7,7 @@ import {themeButton,toggleTheme} from '../web/platform/theme';
 const root = document.querySelector('#app');
 const gameShell = document.querySelector('#game-shell');
 const gameHost = createGameHost(gameShell);
-const awakeLabel=state=>({inactive:'无需常亮',paused:'后台暂停',requesting:'开启中',active:'已申请',released:'系统已暂停，正在恢复',denied:'未获允许，将自动重试',unsupported:'浏览器不支持，请使用新版 HTTPS 浏览器'}[state]||'未开启');
+const awakeLabel=state=>({inactive:'无需常亮',paused:'后台暂停',requesting:'开启中',active:'已申请',released:'已暂停，触屏重试',denied:'未获允许，触屏重试',unsupported:'浏览器不支持，请使用新版 HTTPS 浏览器'}[state]||'未开启');
 const screenAwake = createScreenAwake({onChange:state=>{const el=document.querySelector('#screen-awake-status');if(el)el.textContent=awakeLabel(state);}});
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let playerId = '';
@@ -310,13 +310,12 @@ function sheetView() {
   else if(sheet==='games'){title='今晚玩什么？';content=`<div class="stack">${games.map(g=>`<button class="secondary game-choice" data-game="${g.id}">${gameIcon(g)}<span>${esc(g.title)}<small>${g.minimum}–${g.maximum} 人</small></span></button>`).join('')}</div>`;}
   else if(sheet==='password'){title='房间密码';content=`<form id="password-form" class="stack"><p class="muted">${room.has_password?'已设置密码。留空保存可移除密码。':'当前无需密码即可加入。'}已有成员重连不受影响。</p><label>新密码<input type="password" id="password" autocomplete="new-password" maxlength="20" value="${esc(password)}" placeholder="留空则无需密码"></label><button>保存密码</button></form>`;}
   else if(sheet==='rules'){title='游戏规则';content=rulesView();}
-  else if(sheet==='awake'){title='屏幕常亮检测';content=`<div class="stack"><p>屏幕常亮：<span id="screen-awake-status">${awakeLabel(screenAwake.status)}</span></p><p class="muted">浏览器接受申请后，系统仍可能中断常亮。游戏中会自动检查并恢复；切到后台时暂停。</p><button id="awake-retry" ${room?.stage==='playing'&&inSession()?'':'disabled'}>重新申请常亮</button><a class="awake-check-link secondary" href="/awake-check.html" target="_blank" rel="noopener">打开独立对照测试</a><button class="secondary" id="awake-copy">复制诊断信息</button><textarea id="awake-report" aria-label="常亮诊断信息" rows="6" readonly>${esc(awakeReport())}</textarea><p class="muted">如仍息屏，唤醒后先复制此信息反馈，包含浏览器版本和最近中断记录，不包含身份和房间信息。</p></div>`;}
   else if(sheet==='fullscreen-info'){title='全屏游玩';content='<div class="stack"><p>当前浏览器不支持网页全屏，页面会按浏览器可用高度显示。</p><p class="muted">Android 手机可使用 Chrome 并点击全屏按钮。iPhone 上的浏览器支持因系统版本而异。</p><p class="muted">网页无法固定浏览器地址栏，也不能阻止系统退出全屏。刷新页面或系统退出后，需要再次点击全屏。</p></div>';}
   else if(sheet==='member'){
     const p=room.members[targetRoom];if(!p)return '';
     title=p.name;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
     if(isOwner()&&editable()&&targetRoom!==playerId)content+=`<button class="secondary" data-seat="${esc(targetRoom)}" data-seated="${!room.seats.includes(targetRoom)}">${room.seats.includes(targetRoom)?'移至旁观':'安排入座'}</button><button class="secondary" data-transfer="${esc(targetRoom)}" ${!p.connected?'disabled':''}>转交房主</button><button class="danger" data-kick="${esc(targetRoom)}">移出房间</button>`;
-  }else{title='房间';content=`<p class="muted">屏幕常亮：<span id="screen-awake-status">${awakeLabel(screenAwake.status)}</span></p><button class="secondary" id="awake-details">常亮检测</button><p class="muted">${room.members[room.owner_id].connected?'房主：'+PlayerNames.html(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
+  }else{title='房间';content=`<p class="muted">屏幕常亮：<span id="screen-awake-status">${awakeLabel(screenAwake.status)}</span></p><p class="muted">${room.members[room.owner_id].connected?'房主：'+PlayerNames.html(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
   return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${PlayerNames.html(title)}</h2>${sheet==='onboarding'?'':'<button class="secondary" id="close-sheet" aria-label="关闭">✕</button>'}</div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
 }
 function mountGame() {
@@ -351,7 +350,6 @@ function render() {
   if(window.scrollX!==pageScroll.x || window.scrollY!==pageScroll.y)window.scrollTo(pageScroll.x,pageScroll.y);
   updateCountdown();paintLatency();paintFullscreen();
 }
-function awakeReport(){return JSON.stringify({reportedAt:new Date().toISOString(),browser:navigator.userAgent,fullscreen:Boolean(fullscreenElement()),...screenAwake.diagnostics()},null,2);}
 function bindEvents() {
   const bind=(id,event,fn)=>document.getElementById(id)?.addEventListener(event,fn);
   root.querySelectorAll('[data-fullscreen]').forEach(button=>button.onclick=toggleFullscreen);
@@ -370,13 +368,6 @@ function bindEvents() {
   bind('profile-form','submit',e=>{e.preventDefault();action(submitProfile);});
   bind('room-form','submit',e=>{e.preventDefault();action(submitRoom);});
   bind('room-menu','click',()=>openSheet('menu'));bind('open-settings','click',()=>openSheet('settings'));bind('open-rules','click',()=>openSheet('rules'));bind('game-picker','click',()=>openSheet('games'));
-  bind('awake-details','click',()=>openSheet('awake'));
-  bind('awake-retry','click',()=>{screenAwake.retry();notify('已重新申请，请保持页面在前台观察');});
-  bind('awake-copy','click',async()=>{
-    const text=awakeReport(),field=document.getElementById('awake-report');field.value=text;
-    try{await navigator.clipboard.writeText(text);notify('常亮诊断已复制');}
-    catch{field.focus();field.select();notify('请复制已选中的诊断信息');}
-  });
   bind('edit-profile','click',()=>openSheet('profile'));bind('edit-password','click',()=>openSheet('password'));
   root.querySelectorAll('[data-member]').forEach(b=>b.onclick=()=>openSheet('member',b.dataset.member));
   bind('leave','click',()=>action(async()=>{await roomAction('leave');sheet=null;clearRoom();}));
