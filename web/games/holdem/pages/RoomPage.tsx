@@ -12,7 +12,6 @@ import WinChipsAnimation, { WinInfo } from '../components/WinChipsAnimation';
 import MyChipStack from '../components/MyChipStack';
 import BetToPotAnimation from '../components/BetToPotAnimation';
 import FinalStandings from '../components/FinalStandings';
-import { useWakeLock } from '../hooks/useWakeLock';
 import { usePhaseSound } from '../hooks/usePhaseSound';
 import { useRoomWebSocket } from '../hooks/useRoomWebSocket';
 
@@ -32,7 +31,6 @@ export default function RoomPage() {
     setRoomId, addEvent, standings, setStandings, phaseNotice, setPhaseNotice,
   } = useStore();
   const roomId = platform.roomId;
-  useWakeLock();
   const { playPhaseSound } = usePhaseSound();
   
   const {

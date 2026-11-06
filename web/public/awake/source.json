@@ -1,0 +1,7 @@
+{
+  "source": "https://raw.githubusercontent.com/richtr/NoSleep.js/v0.12.0/src/media.js",
+  "project": "NoSleep.js",
+  "version": "0.12.0",
+  "license": "MIT",
+  "purpose": "Foreground screen-retention video for browsers without Screen Wake Lock"
+}

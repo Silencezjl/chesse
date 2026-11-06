@@ -1,3 +1,4 @@
+import {createScreenAwake} from '../web/platform/screen-awake';
 import './avatars';
 import './player-names';
 import './mobile-interactions';
@@ -6,6 +7,7 @@ import {themeButton,toggleTheme} from '../web/platform/theme';
 const root = document.querySelector('#app');
 const gameShell = document.querySelector('#game-shell');
 const gameHost = createGameHost(gameShell);
+const screenAwake = createScreenAwake();
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let playerId = '';
 const avatars = GameAvatars.ids;
@@ -316,6 +318,7 @@ function sheetView() {
   return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${PlayerNames.html(title)}</h2>${sheet==='onboarding'?'':'<button class="secondary" id="close-sheet" aria-label="关闭">✕</button>'}</div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
 }
 function mountGame() {
+  screenAwake.setActive(Boolean(room&&inSession()&&room.stage==='playing'));
   const active=room&&room.session_id&&inSession()&&['playing','finished'].includes(room.stage);
   if(!active){gameHost.clear();mountedSession='';gameShell.hidden=true;return;}
   if(mountedSession!==room.session_id){

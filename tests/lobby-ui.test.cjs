@@ -33,7 +33,7 @@ async function app(start=initial(), directory=[], savedName='房主') {
     close(){this.readyState=3;}
     message(data){this.onmessage?.({data:JSON.stringify({type:'room_state',data:clone(data)})});}
   }
-  w.createGameHost=el=>({mount(id,c){const child=w.document.createElement('div');child.dataset.gameSession=c.sessionId;el.replaceChildren(child);},clear(){el.replaceChildren()},conceal(){}});w.themeButton=()=>'';w.toggleTheme=()=>{};
+  w.createScreenAwake=()=>({setActive(){}});w.createGameHost=el=>({mount(id,c){const child=w.document.createElement('div');child.dataset.gameSession=c.sessionId;el.replaceChildren(child);},clear(){el.replaceChildren()},conceal(){}});w.themeButton=()=>'';w.toggleTheme=()=>{};
   w.WebSocket=Socket;w.eval(fs.readFileSync('lobby-web/player-names.js','utf8'));w.eval(fs.readFileSync('lobby-web/avatars.js','utf8'));w.eval(source);await tick();await tick();
   return {w,dom,calls,sockets,intervals,advance:ms=>clock+=ms,setRoom:r=>{room=clone(r);sockets.at(-1).message(room);}};
 }

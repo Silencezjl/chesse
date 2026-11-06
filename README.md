@@ -124,3 +124,5 @@ PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome node scripts
 大厅签发 HttpOnly Cookie，将凭证哈希与玩家 ID 绑定。大厅写接口和所有游戏 WebSocket 均校验该绑定。昵称、头像及主题偏好保存在当前浏览器；清除 Cookie 会产生新身份。密码使用 scrypt 哈希，公共接口不返回密码、凭证或未公开身份。
 
 Redis 使用 `lobby:` 命名空间，房间及游戏状态由服务端统一管理。始终保持单 worker，不删除已有数据卷。后端重启恢复对局，取消等待室的未完成倒计时。
+
+游戏进行时，平台统一尝试保持屏幕常亮；切后台、结束游戏或离开房间时释放。HTTPS 环境优先使用 Screen Wake Lock API；当前 HTTP 入口尝试播放本地无声短视频，自动播放被限制时会在下次触摸或按键时重试。网页不能阻止用户手动锁屏或系统强制省电；媒体播放验证不等同于所有手机上的实际防息屏效果。备用视频来自 NoSleep.js 0.12.0（MIT），来源和授权见 `web/public/awake/`。
