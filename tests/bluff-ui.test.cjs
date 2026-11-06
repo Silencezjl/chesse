@@ -1,0 +1,82 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const {JSDOM} = require('jsdom');
+const fs = require('node:fs');
+const source = fs.readFileSync('bluff-web/game.js', 'utf8');
+
+function openGame(storage = {}) {
+  const dom = new JSDOM('<main id="app"></main>', {url:'http://example.test/bluff/?room=123456', runScripts:'outside-only'});
+  const w = dom.window;
+  w.localStorage.setItem('lobby_player_id', 'p1');
+  for (const [key, value] of Object.entries(storage)) w.sessionStorage.setItem(key, value);
+  w.GameAvatars = {html: () => ''};
+  w.PlayerNames = {html: text => text};
+  w.setInterval = () => 1;
+  let socket;
+  w.WebSocket = class {
+    static OPEN = 1;
+    constructor(){socket=this;this.readyState=1;}
+    send(){}
+  };
+  w.eval(source);
+  return {w, dom, send(data){socket.onmessage({data:JSON.stringify({type:'state', data})});}};
+}
+
+function state(session = 'session1', round = 1) {
+  return {session_id:session, phase:'prepare', room_id:'123456', round, total_rounds:3,
+    players:['p1','p2','p3'], members:{p1:{name:'玩家',avatar:'🐭'},p2:{name:'朋友',avatar:'🐭'},p3:{name:'小明',avatar:'🐭'}},
+    judge:'p2', owner_id:'p2', scores:{p1:3,p2:3,p3:3}, ready_count:0, i_ready:false,
+    my_role:'honest', paused:false, available:{1:20,2:20,3:20}};
+}
+
+function pointer(w, element, type, pointerId = 1) {
+  const event = new w.MouseEvent(type, {bubbles:true, button:0});
+  Object.defineProperty(event, 'pointerId', {value:pointerId});
+  if (type === 'pointerdown') element.onpointerdown(event);
+  else element.dispatchEvent(event);
+}
+
+test('hold reveals identity and release or cancellation hides it while preserving readiness', () => {
+  const game = openGame();
+  try {
+    game.send(state());
+    assert.equal(game.w.document.querySelector('#ready').disabled, true);
+    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerdown');
+    assert.equal(game.w.document.querySelector('.role').textContent, '老实人');
+    game.send(state());
+    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerup');
+    assert.equal(game.w.document.querySelector('.role'), null);
+    assert.equal(game.w.document.querySelector('#ready').disabled, false);
+    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerdown');
+    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointercancel');
+    assert.equal(game.w.document.querySelector('.role'), null);
+    assert.equal(game.w.document.querySelector('#ready').disabled, false);
+    const role = game.w.document.querySelector('#role-toggle');
+    role.dispatchEvent(new game.w.KeyboardEvent('keydown', {key:' ', bubbles:true}));
+    assert.equal(game.w.document.querySelector('.role').textContent, '老实人');
+    role.dispatchEvent(new game.w.KeyboardEvent('keyup', {key:' ', bubbles:true}));
+    assert.equal(game.w.document.querySelector('.role'), null);
+    pointer(game.w, game.w.document.querySelector('#role-toggle'), 'pointerdown');
+    game.w.dispatchEvent(new game.w.Event('blur'));
+    assert.equal(game.w.document.querySelector('.role'), null);
+    game.send(state('session1', 2));
+    assert.equal(game.w.document.querySelector('#ready').disabled, true);
+    game.send(state('session2', 1));
+    assert.equal(game.w.document.querySelector('#ready').disabled, true);
+  } finally { game.dom.window.close(); }
+});
+
+test('viewed identity survives reload within the same session and round', () => {
+  const first = openGame();
+  first.send(state());
+  pointer(first.w, first.w.document.querySelector('#role-toggle'), 'pointerdown');
+  pointer(first.w, first.w.document.querySelector('#role-toggle'), 'pointerup');
+  const saved = Object.fromEntries(Object.entries(first.w.sessionStorage));
+  first.dom.window.close();
+  const restored = openGame(saved);
+  try {
+    restored.send(state());
+    assert.equal(restored.w.document.querySelector('.role'), null);
+    assert.equal(restored.w.document.querySelector('#ready').disabled, false);
+  } finally { restored.dom.window.close(); }
+});

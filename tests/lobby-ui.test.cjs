@@ -64,6 +64,14 @@ test('presence updates and viewing the room do not replace the running iframe',a
     a.w.document.querySelector('#resume').click();assert.equal(a.w.document.querySelector('iframe'),frame);assert.equal(a.w.document.querySelector('#game-shell').hidden,false);
   }finally{a.dom.window.close();}
 });
+test('cheese iframe is scoped to the current game session',async()=>{
+  const room=initial();room.stage='playing';room.session_id='first';room.session_members=['p0','p1'];
+  const a=await app(room);try{
+    assert.equal(a.w.document.querySelector('iframe').getAttribute('src'),'/cheese/?session=first');
+    a.setRoom({...room,session_id:'second'});
+    assert.equal(a.w.document.querySelector('iframe').getAttribute('src'),'/cheese/?session=second');
+  }finally{a.dom.window.close();}
+});
 test('a new member of a finished room is never sent into the old game',async()=>{
   const r=initial();r.stage='finished';r.session_id='old';r.session_members=['p1'];const a=await app(r);try{assert.equal(a.w.document.querySelector('iframe'),null);assert.ok(a.w.document.querySelector('#next-session'));}finally{a.dom.window.close();}
 });

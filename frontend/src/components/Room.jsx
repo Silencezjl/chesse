@@ -1,6 +1,6 @@
 import NameText from './NameText';
 import Avatar from './Avatar';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Copy, LogOut, Check, Eye, Vote, Users, Crown,
   Dice1, Dice2, Dice3, Dice4, Dice5, Dice6, UserPlus, Hand
@@ -182,15 +182,37 @@ export default function Room({ ws }) {
   const { roomState, playerId, gameInfo, screenShake, send } = ws;
   const [copied, setCopied] = useState(false);
   const [showPrivate, setShowPrivate] = useState(false);
+  const sessionId = new URLSearchParams(window.location.search).get('session');
+  const viewedKey = sessionId ? `cheese-role:${sessionId}:${playerId}` : null;
+  const [viewedPrivate, setViewedPrivate] = useState(() => {
+    try { return !!viewedKey && sessionStorage.getItem(viewedKey) === '1'; }
+    catch { return false; }
+  });
+  const heldPointer = useRef(null);
+  const heldKey = useRef(false);
   const [confirmation, setConfirmation] = useState(null);
   useEffect(() => {
-    const hide = () => { setShowPrivate(false); setConfirmation(null); };
+    const hide = () => { heldPointer.current = null; heldKey.current = false; setShowPrivate(false); setConfirmation(null); };
+    const releasePointer = e => { if (heldPointer.current === e.pointerId) hide(); };
+    const releaseKey = e => { if (heldKey.current && (e.key === ' ' || e.key === 'Enter')) hide(); };
     const message = e => { if(e.origin === location.origin && e.source === window.parent && e.data?.type === 'conceal_private') hide(); };
-    document.addEventListener('visibilitychange', hide); window.addEventListener('message', message);
-    return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('message', message); };
+    document.addEventListener('visibilitychange', hide);
+    document.addEventListener('pointerup', releasePointer);
+    document.addEventListener('pointercancel', releasePointer);
+    document.addEventListener('keyup', releaseKey);
+    window.addEventListener('blur', hide);
+    window.addEventListener('message', message);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      document.removeEventListener('pointerup', releasePointer);
+      document.removeEventListener('pointercancel', releasePointer);
+      document.removeEventListener('keyup', releaseKey);
+      window.removeEventListener('blur', hide);
+      window.removeEventListener('message', message);
+    };
   }, []);
   useEffect(() => { setConfirmation(null); }, [roomState]);
-  useEffect(() => { setShowPrivate(false); }, [roomState?.phase === 'night']);
+  useLayoutEffect(() => { setShowPrivate(false); }, [roomState?.phase === 'night']);
   useEffect(() => { if(embedded) window.parent.postMessage({type:'game_connection', connected:ws.connected}, location.origin); }, [ws.connected]);
   const choose = (type, target, label) => setConfirmation({type, target, label});
   if (!roomState) return null;
@@ -240,6 +262,13 @@ export default function Room({ ws }) {
   };
 
   const handleLeave = () => { window.location.assign('/'); };
+
+  const revealPrivate = () => {
+    if (!gameInfo) return;
+    setShowPrivate(true);
+    setViewedPrivate(true);
+    try { if (viewedKey) sessionStorage.setItem(viewedKey, '1'); } catch {}
+  };
 
   const isMeThief = gameInfo?.role === 'thief';
   const isMeAccomplice = gameInfo?.role === 'accomplice';
@@ -332,7 +361,25 @@ export default function Room({ ws }) {
       )}
 
       <div className="glass-card p-4 space-y-3"><h2 className="font-bold text-lg">{phase === 'night' ? '🌙 完成你的夜晚行动' : phase === 'day' ? '☀️ 现在可以放下手机，面对面讨论' : phase === 'voting' ? '🗳️ 选择你要投票的玩家' : '🏆 本局结果'}</h2>
-        {!isSpectator && ['night','day','voting'].includes(phase) && <button className="btn-secondary" onClick={() => setShowPrivate(!showPrivate)}>{showPrivate ? '隐藏身份与私密信息' : '查看身份与私密信息'}</button>}
+        {!isSpectator && ['night','day','voting'].includes(phase) && <button
+          className="btn-secondary"
+          disabled={!gameInfo}
+          style={{touchAction:'none', userSelect:'none', WebkitUserSelect:'none', WebkitTouchCallout:'none'}}
+          onContextMenu={e => e.preventDefault()}
+          onPointerDown={e => {
+            if (e.button !== 0 || heldPointer.current !== null) return;
+            e.preventDefault();
+            heldPointer.current = e.pointerId;
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+            revealPrivate();
+          }}
+          onKeyDown={e => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              e.preventDefault();
+              if (!e.repeat) { heldKey.current = true; revealPrivate(); }
+            }
+          }}
+        >按住查看身份与私密信息</button>}
       </div>
       {/* Game Info Banner */}
       {showPrivate && !isSpectator && (phase === 'night' || phase === 'day' || phase === 'voting') && gameInfo && (
@@ -545,10 +592,10 @@ export default function Room({ ws }) {
                 isMe={p.id === playerId}
                 isCreator={p.id === creator_id}
                 phase={phase}
-                onPeek={showPrivate && canPeek ? handlePeek : null}
+                onPeek={viewedPrivate && canPeek ? handlePeek : null}
                 onVote={phase === 'voting' ? handleVote : null}
-                onAccomplice={showPrivate && canAccomplice ? handleAccomplice : null}
-                onDodobirdAccomplice={showPrivate && canDodobirdAccomplice ? handleDodobirdAccomplice : null}
+                onAccomplice={viewedPrivate && canAccomplice ? handleAccomplice : null}
+                onDodobirdAccomplice={viewedPrivate && canDodobirdAccomplice ? handleDodobirdAccomplice : null}
                 myVote={me?.voted_for}
                 canAccomplice={canAccomplice}
                 canDodobirdAccomplice={canDodobirdAccomplice}
@@ -611,16 +658,17 @@ export default function Room({ ws }) {
         {!isSpectator && phase === 'night' && (() => {
           const canEnd = gameInfo?.can_end_night;
           const iDone = gameInfo?.i_night_done;
-          const btnDisabled = iDone || !canEnd;
+          const btnDisabled = iDone || !canEnd || !viewedPrivate;
           const doneCount = roomState.night_done_count || 0;
           const totalCount = roomState.night_total || 0;
           let hint = '';
-          if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
+          if (!viewedPrivate) hint = '请先按住查看身份。';
+          else if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
           else if (!canEnd && isMeDodobird && gameInfo?.can_choose_accomplice && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名假共犯';
           else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
           return (
             <>
-              {showPrivate && hint && <span className="text-sm text-yellow-400">{hint}</span>}
+              {hint && <span className="text-sm text-yellow-400">{hint}</span>}
               <button
                 onClick={handleNightDone}
                 disabled={btnDisabled}

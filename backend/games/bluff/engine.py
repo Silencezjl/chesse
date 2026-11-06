@@ -187,7 +187,7 @@ def act(state, player, kind, data=None, *, now=None, rng=None):
 def view(state, player, now=None):
     """Only return data visible to this recipient; spectators receive no private role."""
     q = question(state)
-    info = {'phase': state['phase'], 'room_id': state['id'], 'players': state['players'],
+    info = {'phase': state['phase'], 'room_id': state['id'], 'session_id': state.get('generation'), 'players': state['players'],
             'members': state['members'], 'owner_id': state['owner_id'], 'judge': state['judge'],
             'round': min(state['round_index'] + 1, len(state['players']) * state['circles']),
             'total_rounds': len(state['players']) * state['circles'], 'scores': state['scores'],

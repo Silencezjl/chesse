@@ -18,7 +18,7 @@ const COLORS = {
 
 export default function Notifications({ notifications }) {
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div className="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
       {notifications.map((n) => {
         const Icon = ICONS[n.type] || Info;
         return (

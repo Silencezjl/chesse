@@ -14,10 +14,26 @@ try{for(const game of ['cheese','bluff']){
  const frames=pages.map(p=>p.frameLocator('iframe'));
  await pages[0].locator('#fullscreen-game').click();await pages[0].waitForFunction(()=>document.fullscreenElement);
  if(game==='cheese'){
-  for(let i=0;i<count;i++){await frames[i].getByRole('button',{name:'查看身份与私密信息'}).waitFor();assert.equal(await frames[i].getByText('你的骰子:',{exact:false}).count(),0);await frames[i].getByRole('button',{name:'查看身份与私密信息'}).click();}
+  for(let i=0;i<count;i++){
+   await pages[i].bringToFront();const f=frames[i],role=f.getByRole('button',{name:'按住查看身份与私密信息'});await f.locator('button:not([disabled])').filter({hasText:'按住查看身份与私密信息'}).waitFor();
+   assert.equal(await f.getByText('你的骰子:',{exact:false}).count(),0);
+   assert.equal(await f.getByRole('button',{name:'结束夜晚行动'}).isDisabled(),true);
+   const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
+   await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
+   const card=f.getByAltText('角色卡牌');await card.waitFor();await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
+   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await card.waitFor({state:'detached'});
+   if(i===0){
+    await role.focus();await pages[i].keyboard.down('Space');await card.waitFor();await pages[i].keyboard.up('Space');await card.waitFor({state:'detached'});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});await card.waitFor();
+    await touch.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await card.waitFor({state:'detached'});
+   }
+   await touch.detach();
+  }
+  let thiefIndex=-1;for(let i=0;i<count;i++)if(await frames[i].getByRole('button',{name:'选为共犯',exact:true}).count())thiefIndex=i;
+  assert.notEqual(thiefIndex,-1);await pages[thiefIndex].reload();await frames[thiefIndex].getByRole('button',{name:'选为共犯',exact:true}).first().waitFor();assert.equal(await frames[thiefIndex].getByAltText('角色卡牌').count(),0);
   for(const f of frames){for(const label of ['选为共犯','偷看']){const target=f.getByRole('button',{name:label,exact:true});if(await target.count()){await target.first().click();await f.getByRole('button',{name:'确认提交'}).click();await f.getByRole('dialog').waitFor({state:'detached'});}}}
   await pages[0].screenshot({path:'/tmp/chesse-cheese-360.png'});
-  await pages[0].locator('#show-room').click();await pages[0].locator('#resume').click();await frames[0].getByRole('button',{name:'查看身份与私密信息'}).waitFor();assert.equal(await frames[0].getByText('你的骰子:',{exact:false}).count(),0);
+  await pages[0].locator('#show-room').click();await pages[0].locator('#resume').click();await frames[0].getByRole('button',{name:'按住查看身份与私密信息'}).waitFor();assert.equal(await frames[0].getByText('你的骰子:',{exact:false}).count(),0);
   for(const f of frames)await f.getByRole('button',{name:'结束夜晚行动'}).click();
   for(const f of frames)await f.getByRole('button',{name:'发起投票',exact:true}).waitFor();
   for(const f of frames.slice(0,3))await f.getByRole('button',{name:'发起投票',exact:true}).click();
@@ -28,7 +44,15 @@ try{for(const game of ['cheese','bluff']){
   for(const f of frames)assert.equal(await f.locator('.role').count(),0);
   const judgeIndex=await (async()=>{for(let i=0;i<count;i++)if(await frames[i].locator('.draw').count())return i;})();
   await frames[judgeIndex].locator('.draw').first().click();
-  for(const f of frames){await f.locator('#role-toggle').click();await f.locator('#ready').click();}
+  for(let i=0;i<count;i++){
+   const f=frames[i],role=f.locator('#role-toggle');await f.locator('#ready').waitFor();assert.equal(await f.locator('#ready').isDisabled(),true);
+   const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
+   await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
+   await f.locator('.role').waitFor();await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+   await f.locator('.role').waitFor({state:'detached'});assert.equal(await f.locator('#ready').isEnabled(),true);await touch.detach();
+  }
+  await pages[0].reload();await frames[0].locator('#ready:not(:disabled)').waitFor();assert.equal(await frames[0].locator('.role').count(),0);
+  for(const f of frames)await f.locator('#ready:not(:disabled)').click();
   await frames[0].locator('#countdown').waitFor();await pages[0].screenshot({path:'/tmp/chesse-bluff-360.png'});
   await frames[judgeIndex].getByText('放下手机，面对面讨论',{exact:true}).waitFor({timeout:15000});
   for(let step=0;step<2;step++){await frames[judgeIndex].locator('.target').first().click();await frames[judgeIndex].locator('#confirm-target').click();await frames[judgeIndex].getByRole('dialog').waitFor({state:'detached'});}

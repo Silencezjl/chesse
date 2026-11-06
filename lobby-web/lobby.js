@@ -315,7 +315,7 @@ function mountGame() {
     localStorage.setItem('cheese_player_id',playerId);localStorage.setItem('cheese_room_id',room.id);
     localStorage.setItem('holdem_device_id',playerId);localStorage.setItem('holdem_player_name',name);localStorage.setItem('holdem_player_emoji',avatar);localStorage.setItem('holdem_room_id',room.id);
     const entry=info(room.game_id)?.entry;
-    const src=room.game_id==='holdem'?`${entry}room/${room.id}`:room.game_id==='bluff'?`${entry}?room=${room.id}`:entry;if(!src)return;
+    const src=room.game_id==='holdem'?`${entry}room/${room.id}`:room.game_id==='bluff'?`${entry}?room=${room.id}`:room.game_id==='cheese'?`${entry}?session=${encodeURIComponent(room.session_id)}`:entry;if(!src)return;
     const frame=document.createElement('iframe');frame.title=info(room.game_id).title;frame.className='game-frame';frame.src=src;
     gameConnected=false;gameShell.replaceChildren(frame);mountedSession=room.session_id;
   }
