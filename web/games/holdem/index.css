@@ -69,3 +69,5 @@ button:disabled { opacity:.45; }
 .text-red-200,.text-red-300,.text-red-400{color:var(--theme-danger)}
 button[class*="bg-blue-"],button[class*="bg-green-"],button[class*="bg-purple-"],button[class*="bg-orange-"],button[class*="bg-red-"]{color:white}
 [class*="bg-yellow-900/"]{background:var(--theme-money-soft)}
+
+.holdem-action-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.holdem-action-row button{height:var(--mobile-primary-touch);min-height:var(--mobile-primary-touch);min-width:0;padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:14px;line-height:1.15;white-space:nowrap}.holdem-action-row small{font-size:clamp(10px,2.8vw,12px);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.2px}

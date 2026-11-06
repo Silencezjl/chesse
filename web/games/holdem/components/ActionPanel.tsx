@@ -51,10 +51,10 @@ export default function ActionPanel({ room, playerId, onAction, disabled = false
     <div className="flex gap-2 flex-wrap">{quick.map(n => <button key={n} className="px-3 rounded-xl bg-slate-700" onClick={() => setAmount(n)}>{n}</button>)}</div>
     <button className="w-full bg-blue-700 rounded-xl" disabled={disabled || !Number.isFinite(amount) || !Number.isInteger(amount) || amount < min || amount > max} onClick={() => amount === max ? setConfirm('all_in') : submit('raise', amount)}>确认加注到 {amount}</button>
   </div>;
-  return <div className="space-y-2"><p className="text-sm text-green-300">轮到你了{disabled ? ' · 正在同步…' : ''}</p><div className="grid grid-cols-2 gap-2">
+  return <div className="space-y-2"><p className="text-sm text-green-300">轮到你了{disabled ? ' · 正在同步…' : ''}</p><div className="holdem-action-row" role="group" aria-label="下注操作">
     <button disabled={disabled} className="border border-red-800 bg-red-950 rounded-xl text-red-200" onClick={() => setConfirm('fold')}>弃牌</button>
-    {call === 0 ? <button disabled={disabled} className="bg-slate-700 rounded-xl" onClick={() => submit('check')}>过牌</button> : call <= player.chips ? <button disabled={disabled} className="bg-green-800 rounded-xl" onClick={() => submit('call', call)}>跟注 {call}</button> : <button disabled className="bg-slate-800 rounded-xl">筹码不足，请全下</button>}
+    {call === 0 ? <button disabled={disabled} className="bg-slate-700 rounded-xl" onClick={() => submit('check')}>过牌</button> : call <= player.chips ? <button disabled={disabled} aria-label={`跟注 ${call}`} className="bg-green-800 rounded-xl" onClick={() => submit('call', call)}><span>跟注</span><small>{call}</small></button> : <button disabled aria-label="筹码不足，请全下" className="bg-slate-800 rounded-xl"><span>跟注</span><small>筹码不足</small></button>}
     <button disabled={disabled || player.chips <= call} className="bg-blue-800 rounded-xl" onClick={() => { setAmount(min); setShowRaise(true); }}>加注</button>
-    <button disabled={disabled} className="bg-purple-800 rounded-xl" onClick={() => setConfirm('all_in')}>全下 {player.chips}</button>
+    <button disabled={disabled} aria-label={`全下 ${player.chips}`} className="bg-purple-800 rounded-xl" onClick={() => setConfirm('all_in')}><span>全下</span><small>{player.chips}</small></button>
   </div></div>;
 }
