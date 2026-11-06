@@ -18,10 +18,10 @@ try{for(const game of ['cheese','bluff']){
   for(const width of [320,360,390,430]){await pages[0].setViewportSize({width,height:640});await assertBottom(frames[0],'button[style*="touch-action"]');}
   await pages[0].setViewportSize({width:360,height:800});
   for(let i=0;i<count;i++){
-   await pages[i].bringToFront();const f=frames[i],role=f.getByRole('button',{name:'按住查看身份与私密信息'});await f.locator('button:not([disabled])').filter({hasText:'按住查看身份与私密信息'}).waitFor();
+   await pages[i].bringToFront();const f=frames[i],role=f.getByRole('button',{name:'按住看身份'});await f.locator('button:not([disabled])').filter({hasText:'按住看身份'}).waitFor();
    await assertBottom(f,'button[style*="touch-action"]');
    assert.equal(await f.getByText('你的骰子:',{exact:false}).count(),0);
-   assert.equal(await f.getByRole('button',{name:'结束夜晚行动'}).isDisabled(),true);
+   assert.equal(await f.getByRole('button',{name:'完成行动'}).isDisabled(),true);
    const box=await role.boundingBox(),touch=await contexts[i].newCDPSession(pages[i]);
    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
    const card=f.getByAltText('角色卡牌');await card.waitFor();const visibleCard=await card.boundingBox();assert.ok(visibleCard.y>=0&&visibleCard.y+visibleCard.height<=800);await card.evaluate(image=>new Promise((resolve,reject)=>{if(image.complete)return image.naturalWidth?resolve():reject(Error('Role image failed'));image.onload=resolve;image.onerror=reject;}));
@@ -37,8 +37,8 @@ try{for(const game of ['cheese','bluff']){
   assert.notEqual(thiefIndex,-1);await pages[thiefIndex].reload();await frames[thiefIndex].getByRole('button',{name:'选为共犯',exact:true}).first().waitFor();assert.equal(await frames[thiefIndex].getByAltText('角色卡牌').count(),0);
   for(const f of frames){for(const label of ['选为共犯','偷看']){const target=f.getByRole('button',{name:label,exact:true});if(await target.count()){await target.first().click();await f.getByRole('button',{name:'确认提交'}).click();await f.getByRole('dialog').waitFor({state:'detached'});}}}
   await pages[0].screenshot({path:'/tmp/chesse-cheese-360.png'});
-  await pages[0].locator('#show-room').click();await pages[0].locator('#resume').click();await frames[0].getByRole('button',{name:'按住查看身份与私密信息'}).waitFor();assert.equal(await frames[0].getByText('你的骰子:',{exact:false}).count(),0);
-  for(const f of frames)await f.getByRole('button',{name:'结束夜晚行动'}).click();
+  await pages[0].locator('#show-room').click();await pages[0].locator('#resume').click();await frames[0].getByRole('button',{name:'按住看身份'}).waitFor();assert.equal(await frames[0].getByText('你的骰子:',{exact:false}).count(),0);
+  for(const f of frames)await f.getByRole('button',{name:'完成行动'}).click();
   for(const f of frames)await f.getByRole('button',{name:'发起投票',exact:true}).waitFor();
   for(const f of frames.slice(0,3))await f.getByRole('button',{name:'发起投票',exact:true}).click();
   for(const f of frames){await f.getByRole('button',{name:'投票',exact:true}).first().click();await f.getByRole('button',{name:'确认提交'}).click();}

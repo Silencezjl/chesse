@@ -7,7 +7,8 @@ import {themeButton,toggleTheme} from '../web/platform/theme';
 const root = document.querySelector('#app');
 const gameShell = document.querySelector('#game-shell');
 const gameHost = createGameHost(gameShell);
-const screenAwake = createScreenAwake();
+const awakeLabel=state=>({inactive:'无需常亮',paused:'后台暂停',requesting:'开启中',active:'已开启',released:'系统已暂停，点屏幕重试',denied:'未获允许，点屏幕重试',unsupported:'浏览器不支持，请使用新版 HTTPS 浏览器'}[state]||'未开启');
+const screenAwake = createScreenAwake({onChange:state=>{const el=document.querySelector('#screen-awake-status');if(el)el.textContent=awakeLabel(state);}});
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let playerId = '';
 const avatars = GameAvatars.ids;
@@ -314,7 +315,7 @@ function sheetView() {
     const p=room.members[targetRoom];if(!p)return '';
     title=p.name;content=`<p class="muted">${p.connected?'在线':'暂时离线'}${targetRoom===room.owner_id?' · 房主':''}</p>`;
     if(isOwner()&&editable()&&targetRoom!==playerId)content+=`<button class="secondary" data-seat="${esc(targetRoom)}" data-seated="${!room.seats.includes(targetRoom)}">${room.seats.includes(targetRoom)?'移至旁观':'安排入座'}</button><button class="secondary" data-transfer="${esc(targetRoom)}" ${!p.connected?'disabled':''}>转交房主</button><button class="danger" data-kick="${esc(targetRoom)}">移出房间</button>`;
-  }else{title='房间';content=`<p class="muted">${room.members[room.owner_id].connected?'房主：'+PlayerNames.html(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
+  }else{title='房间';content=`<p class="muted">屏幕常亮：<span id="screen-awake-status">${awakeLabel(screenAwake.status)}</span></p><p class="muted">${room.members[room.owner_id].connected?'房主：'+PlayerNames.html(room.members[room.owner_id].name):'房主暂时离线，60 秒后转交在线成员；游戏中延后至结束。'}</p><button class="secondary" id="edit-profile" ${room.stage==='playing'?'disabled':''}>修改昵称与头像${room.stage==='playing'?'（本局结束后）':''}</button>${isOwner()&&editable()?'<button class="secondary" id="edit-password">设置房间密码</button>':''}${inSession()?'<button class="secondary" data-resume>返回游戏／查看结果</button>':''}<button class="danger" id="leave" ${room.stage==='playing'&&!pending()?'disabled':''}>离开房间${room.stage==='playing'&&!pending()?'（本局结束后）':''}</button>`;}
   return `<div class="modal-backdrop"><section class="confirm-card card" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="row"><h2 id="sheet-title">${PlayerNames.html(title)}</h2>${sheet==='onboarding'?'':'<button class="secondary" id="close-sheet" aria-label="关闭">✕</button>'}</div>${error?`<div class="error" role="alert">${esc(error)}</div>`:''}${content}</section></div>`;
 }
 function mountGame() {

@@ -101,18 +101,14 @@ function PlayerCard({ player, index, isMe, isCreator, phase, onPeek, onVote, onA
 
       {/* Show role & dice only in result phase */}
       {phase === 'result' && player.role && (
-        <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-          player.role === 'thief' ? 'bg-red-500 text-white' :
-          player.role === 'accomplice' ? 'bg-yellow-400 text-yellow-900' :
-          'bg-slate-200 text-slate-700'
-        }`}>
+        <div className={`cheese-role-badge cheese-role-${player.role}`}>
           {roleLabel[player.role] || player.role}
           {player.dice > 0 && ` ${player.dice}点`}
         </div>
       )}
       {/* Show outsider tag only in result phase */}
       {phase === 'result' && player.outsider && (
-        <div className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">
+        <div className="cheese-role-badge cheese-role-special">
           🐦 呆呆鸟
         </div>
       )}
@@ -282,19 +278,18 @@ export default function Room({ ws }) {
   const canAccomplice = phase === 'night' && isMeThief && gameInfo?.can_choose_accomplice;
   const canDodobirdAccomplice = phase === 'night' && isMeDodobird && gameInfo?.can_choose_accomplice;
   const isCreator = playerId === creator_id;
-  const isBrightPhase = phase === 'day' || phase === 'voting';
-  const infoTitleClass = isBrightPhase ? 'text-slate-900' : 'text-white';
-  const infoTextClass = isBrightPhase ? 'text-slate-800' : 'text-white/85';
-  const infoMutedClass = isBrightPhase ? 'text-slate-700' : 'text-white/70';
-  const infoSoftClass = isBrightPhase ? 'text-slate-600' : 'text-white/55';
-  const infoPanelClass = isBrightPhase ? 'bg-black/5 border border-black/10' : 'bg-black/20 border border-white/10';
-  const infoChipClass = isBrightPhase ? 'bg-black/10 text-slate-800' : 'bg-white/10 text-white/85';
-  const groupLabelClass = isBrightPhase ? 'text-slate-700' : 'text-white/60';
-  const groupMouseBadgeClass = isBrightPhase ? 'bg-black/10 text-slate-800' : 'bg-white/10 text-white/90';
-  const groupThiefBadgeClass = isBrightPhase ? 'bg-red-500/15 text-red-700' : 'bg-red-500/30 text-red-200';
-  const roleEvilClass = isBrightPhase ? 'text-red-600' : 'text-red-400';
-  const roleGoodClass = isBrightPhase ? 'text-emerald-700' : 'text-emerald-300';
-  const diceValueClass = isBrightPhase ? 'text-amber-700' : 'text-cheese-300';
+  const infoTitleClass = 'cheese-text';
+  const infoTextClass = 'cheese-text';
+  const infoMutedClass = 'cheese-muted';
+  const infoSoftClass = 'cheese-muted';
+  const infoPanelClass = 'cheese-info-panel';
+  const infoChipClass = 'cheese-role-badge cheese-role-mouse';
+  const groupLabelClass = 'cheese-muted';
+  const groupMouseBadgeClass = 'cheese-role-badge cheese-role-mouse';
+  const groupThiefBadgeClass = 'cheese-role-badge cheese-role-thief';
+  const roleEvilClass = 'cheese-danger-text';
+  const roleGoodClass = 'cheese-special-text';
+  const diceValueClass = 'text-cheese-300';
   const allPlayerIds = Object.keys(players);
   const mouseCardMap = assignMouseCards(allPlayerIds);
 
@@ -306,7 +301,7 @@ export default function Room({ ws }) {
 
 
   return (
-    <div className="w-full max-w-4xl mt-4 space-y-4" style={{paddingBottom: actionHeight}}>
+    <div className="cheese-content w-full min-w-0 max-w-4xl mt-4 space-y-4" style={{paddingBottom: actionHeight}}>
       {/* Spectator Banner */}
       {isSpectator && (
         <div className="glass-card p-4 border-purple-500/30 text-center">
@@ -445,7 +440,7 @@ export default function Room({ ws }) {
 
       {/* Action Log */}
       {phase === 'result' && roomState.action_log && (
-        <details className="glass-card p-4">
+        <details className="glass-card cheese-action-log p-4">
           <summary className="text-sm font-bold text-white/70 mb-3">📜 查看身份与行动过程</summary>
           <div className="space-y-3">
             {roomState.action_log.map((entry) => {
@@ -469,11 +464,11 @@ export default function Room({ ws }) {
                         loading="lazy"
                       />
                       <div className="w-full flex flex-col items-center gap-1">
-                        <span className={`text-[10px] md:text-[11px] px-2 py-0.5 rounded-full font-medium ${entry.role === 'thief' ? 'bg-red-500 text-white' : entry.role === 'accomplice' ? 'bg-yellow-400 text-yellow-900' : 'bg-slate-200 text-slate-700'}`}>
+                        <span className={`cheese-role-badge cheese-role-${entry.role}`}>
                           {roleLabels[entry.role] || entry.role}
                         </span>
                         <span className="text-[11px] md:text-xs text-cheese-300 font-medium">🎲 {entry.dice}点</span>
-                        <span className="text-[11px] md:text-xs text-red-300 font-medium">🗳️ {finalVotes} 票</span>
+                        <span className="text-[11px] md:text-xs cheese-danger-text font-medium">🗳️ {finalVotes} 票</span>
                         {(entry.wake_dice != null && entry.wake_dice !== entry.dice) && (
                           <span className="text-[10px] text-white/60 text-center leading-tight">在 {entry.wake_dice} 点时醒来</span>
                         )}
@@ -489,10 +484,10 @@ export default function Room({ ws }) {
                         <span className="font-medium break-all"><NameText value={entry.name} /></span>
                         {isMyEntry && <span className="text-xs bg-cheese-500 text-night-900 font-bold px-1.5 py-0.5 rounded">我</span>}
                         {entry.outsider_label && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">{entry.outsider_label}</span>
+                          <span className="cheese-role-badge cheese-role-special">{entry.outsider_label}</span>
                         )}
                         {entry.dodobird_label && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400 text-white font-medium">{entry.dodobird_label}</span>
+                          <span className="cheese-role-badge cheese-role-special">{entry.dodobird_label}</span>
                         )}
                       </div>
 
@@ -595,10 +590,10 @@ export default function Room({ ws }) {
               if (!e.repeat) { heldKey.current = true; revealPrivate(); }
             }
           }}
-        >按住查看身份与私密信息</button>}
+        >按住看身份</button>}
       <fieldset disabled={!ws.connected || ws.actionPending} className="cheese-action-buttons flex flex-wrap items-center justify-center gap-3">
         {isSpectator && phase !== 'waiting' && (
-          <span className="text-sm text-white/40">👀 观战中，等待本局结束...</span>
+          <span className="text-sm text-white/40">观战中</span>
         )}
         {phase === 'waiting' && !isSpectator && (
           <>
@@ -622,10 +617,10 @@ export default function Room({ ws }) {
           const doneCount = roomState.night_done_count || 0;
           const totalCount = roomState.night_total || 0;
           let hint = '';
-          if (!viewedPrivate) hint = '请先按住查看身份。';
-          else if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名共犯';
-          else if (!canEnd && isMeDodobird && gameInfo?.can_choose_accomplice && !gameInfo?.accomplice_name) hint = '⚠️ 你必须先选择一名假共犯';
-          else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '⚠️ 请先偷看一位玩家的骰子';
+          if (!viewedPrivate) hint = '先查看身份';
+          else if (!canEnd && isMeThief && !gameInfo?.accomplice_name) hint = '先选择共犯';
+          else if (!canEnd && isMeDodobird && gameInfo?.can_choose_accomplice && !gameInfo?.accomplice_name) hint = '先选择假共犯';
+          else if (!canEnd && gameInfo?.can_peek && !gameInfo?.has_peeked) hint = '先偷看骰子';
           return (
             <>
               {hint && <span className="text-sm text-yellow-400">{hint}</span>}
@@ -635,7 +630,7 @@ export default function Room({ ws }) {
                 className={btnDisabled ? 'btn-secondary opacity-60 cursor-not-allowed' : 'btn-primary'}
               >
                 <span className="flex items-center gap-2">
-                  <Check size={16} /> {iDone ? '已结束，等待其他人...' : '结束夜晚行动'}
+                  <Check size={16} /> {iDone ? '已完成' : '完成行动'}
                 </span>
               </button>
             </>
@@ -665,7 +660,7 @@ export default function Room({ ws }) {
           </div>
         )}
 
-        {phase === 'result' && <span className="text-sm text-white/40">本局结束，请返回公共房间选择下一局。</span>}
+        {phase === 'result' && <span className="text-sm text-white/40">本局结束，可返回房间</span>}
       </fieldset>
       </div>
     </div>

@@ -8,8 +8,8 @@
 
 - SSH 使用 `ssh root@111.229.79.183`。
 - 项目目录为 `/opt/chesse`，Compose 项目名为 `chesse-shanghai`。
-- 公网入口为 `http://111.229.79.183:8000`。
-- 服务器 `.env` 设置 `COMPOSE_PROJECT_NAME=chesse-shanghai` 和 `LOBBY_PORT=8000`。
+- 公网入口为 `https://111.229.79.183`；原 HTTP 入口（含 8000 端口）自动跳转 HTTPS。
+- 服务器 `.env` 设置 `COMPOSE_PROJECT_NAME=chesse-shanghai`、`LOBBY_PORT=8000` 和 `COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml`。
 - 成都旧节点 `aliyun-chengdu-head`（Tailscale 当前名称 `aliyun-headscale`，`100.64.0.1`）已退役，后续发布使用上海节点。
 
 优先在开发机构建并验证镜像，再传送到上海服务器。当前运行镜像为 `chesse-shanghai-backend:latest`、`chesse-shanghai-frontend:latest`，Redis 使用 `docker.m.daocloud.io/redis:7-alpine`。镜像导入并更新源码后，在服务器执行：
@@ -125,4 +125,28 @@ PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_PATH=/path/to/chrome node scripts
 
 Redis 使用 `lobby:` 命名空间，房间及游戏状态由服务端统一管理。始终保持单 worker，不删除已有数据卷。后端重启恢复对局，取消等待室的未完成倒计时。
 
-游戏进行时，平台统一尝试保持屏幕常亮；切后台、结束游戏或离开房间时释放。HTTPS 环境优先使用 Screen Wake Lock API；当前 HTTP 入口尝试播放本地无声短视频，自动播放被限制时会在下次触摸或按键时重试。网页不能阻止用户手动锁屏或系统强制省电；媒体播放验证不等同于所有手机上的实际防息屏效果。备用视频来自 NoSleep.js 0.12.0（MIT），来源和授权见 `web/public/awake/`。
+游戏进行时，平台统一申请原生屏幕常亮锁；切后台、结束游戏或离开房间时释放，返回前台后重试。只有浏览器实际授予常亮锁才报告已开启，可在房间“更多”中查看状态；系统拒绝或释放时显示实际状态。HTTP 已跳转 HTTPS，移除了未能可靠防息屏的视频备用方案。手动锁屏、省电模式或浏览器策略仍可中止常亮。
+
+## 上海 HTTPS 与证书维护
+
+`docker-compose.https.yml` 为正式环境增加 80/443 端口及只读证书挂载；普通 Compose 无证书也可启动。公网 IP 使用 Let's Encrypt 的短期证书，证书与账户位于 `/opt/chesse-acme/letsencrypt`，ACME 校验目录为 `/opt/chesse-acme/webroot`，不进入 Git。80、443 端口需保持开放。
+
+首次签发可在已提供校验目录的 HTTP 入口下执行：
+
+```bash
+docker run --rm -v /opt/chesse-acme/letsencrypt:/etc/letsencrypt \
+  -v /opt/chesse-acme/webroot:/var/www/certbot certbot/certbot:v5.4.0 \
+  certonly --webroot --webroot-path /var/www/certbot --ip-address 111.229.79.183 \
+  --preferred-profile shortlived --non-interactive --agree-tos --register-unsafely-without-email
+```
+
+`deploy/chesse-certificate.timer` 每天检查两次续期，`deploy/renew-certificate.sh` 成功后校验并重载 Nginx，不中断现有对局。部署时安装到 systemd 并启用：
+
+```bash
+cp deploy/chesse-certificate.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now chesse-certificate.timer
+systemctl list-timers chesse-certificate.timer
+```
+
+续期日志位于 `/opt/chesse-acme/logs`；可用 `journalctl -u chesse-certificate.service` 检查失败。证书有效期约六天，续期定时器必须保持运行。

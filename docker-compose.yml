@@ -28,6 +28,7 @@ services:
         condition: service_healthy
     environment:
       PYTHONUNBUFFERED: '1'
+      FORWARDED_ALLOW_IPS: '*'
       REDIS_URL: redis://redis:6379/0
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)"]

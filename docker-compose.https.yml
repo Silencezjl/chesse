@@ -1,0 +1,10 @@
+# Production overlay; base Compose remains usable without certificates.
+services:
+  frontend:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx-https.conf:/etc/nginx/platform-tls.conf:ro
+      - /opt/chesse-acme/letsencrypt:/etc/letsencrypt:ro
+      - /opt/chesse-acme/webroot:/var/www/certbot:ro

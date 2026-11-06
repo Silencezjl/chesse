@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the Shanghai game platform certificate twice daily
+
+[Timer]
+OnCalendar=*-*-* 00,12:15:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

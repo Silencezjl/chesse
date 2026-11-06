@@ -13,7 +13,7 @@ export default function App() {
 
   return (
     <div className={`min-h-full flex flex-col `}>
-      <main className="flex-1 flex items-start justify-center p-4">
+      <main className="cheese-main flex-1 min-w-0 flex items-start justify-center p-4">
         {roomState ? (
           <Room ws={ws} />
         ) : (
